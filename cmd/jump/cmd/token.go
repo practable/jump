@@ -24,7 +24,7 @@ import (
 
 	"github.com/ory/viper"
 	"github.com/spf13/cobra"
-	"github.com/practable/relay/internal/shellaccess"
+	"github.com/practable/jump/internal/shellaccess"
 )
 
 // hostCmd represents the host command
