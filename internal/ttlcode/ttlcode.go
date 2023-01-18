@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/practable/relay/internal/permission"
+	"github.com/practable/jump/internal/permission"
 )
 
 // ExpToken represents a token and its expiry time.

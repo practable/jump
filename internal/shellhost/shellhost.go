@@ -16,9 +16,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
-	"github.com/practable/relay/internal/reconws"
-	"github.com/practable/relay/internal/shellbar"
-	"github.com/practable/relay/internal/tcpconnect"
+	"github.com/practable/jump/internal/reconws"
+	"github.com/practable/jump/internal/shellbar"
+	"github.com/practable/jump/internal/tcpconnect"
 )
 
 // Host connects to remote relay, and makes a new connection

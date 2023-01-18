@@ -19,9 +19,9 @@ import (
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/practable/relay/internal/permission"
-	"github.com/practable/relay/internal/reconws"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/permission"
+	"github.com/practable/jump/internal/reconws"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 // NOTE don't use reconws.Reconnect for production clients anymore;

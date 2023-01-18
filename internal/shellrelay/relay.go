@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/practable/relay/internal/shellaccess"
-	"github.com/practable/relay/internal/shellbar"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/shellaccess"
+	"github.com/practable/jump/internal/shellbar"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 // Relay runs a shellrelay instance that relays ssh connections between shellclient and shellhost

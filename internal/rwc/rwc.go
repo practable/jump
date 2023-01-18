@@ -9,9 +9,9 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/practable/relay/internal/agg"
-	"github.com/practable/relay/internal/hub"
-	"github.com/practable/relay/internal/reconws"
+	"github.com/practable/jump/internal/agg"
+	"github.com/practable/jump/internal/hub"
+	"github.com/practable/jump/internal/reconws"
 )
 
 // New returns a pointer to a new Hub

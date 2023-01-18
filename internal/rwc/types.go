@@ -3,9 +3,9 @@ package rwc
 import (
 	"context"
 
-	"github.com/practable/relay/internal/agg"
-	"github.com/practable/relay/internal/hub"
-	"github.com/practable/relay/internal/reconws"
+	"github.com/practable/jump/internal/agg"
+	"github.com/practable/jump/internal/hub"
+	"github.com/practable/jump/internal/reconws"
 )
 
 // Hub represents a messaging hub

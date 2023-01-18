@@ -4,9 +4,9 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/practable/relay/internal/access"
-	"github.com/practable/relay/internal/crossbar"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/access"
+	"github.com/practable/jump/internal/crossbar"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 // Relay runs a websocket relay

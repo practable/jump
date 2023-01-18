@@ -1,7 +1,7 @@
 package agg
 
 import (
-	"github.com/practable/relay/internal/hub"
+	"github.com/practable/jump/internal/hub"
 )
 
 // Hub is the main structure representing an aggegrating hub

@@ -21,9 +21,9 @@ import (
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/practable/relay/internal/access/restapi/operations"
-	"github.com/practable/relay/internal/permission"
-	"github.com/practable/relay/internal/reconws"
+	"github.com/practable/jump/internal/access/restapi/operations"
+	"github.com/practable/jump/internal/permission"
+	"github.com/practable/jump/internal/reconws"
 )
 
 func TestRelay(t *testing.T) {

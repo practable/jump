@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/practable/relay/internal/hub"
+	"github.com/practable/jump/internal/hub"
 )
 
 func TestInstantiateHub(t *testing.T) {

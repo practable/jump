@@ -22,11 +22,11 @@ import (
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/practable/relay/internal/agg"
-	"github.com/practable/relay/internal/hub"
-	"github.com/practable/relay/internal/permission"
-	"github.com/practable/relay/internal/reconws"
-	"github.com/practable/relay/internal/relay"
+	"github.com/practable/jump/internal/agg"
+	"github.com/practable/jump/internal/hub"
+	"github.com/practable/jump/internal/permission"
+	"github.com/practable/jump/internal/reconws"
+	"github.com/practable/jump/internal/relay"
 )
 
 func makeTestToken(audience, secret string, ttl int64) (string, error) {

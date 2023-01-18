@@ -6,7 +6,7 @@ import (
 
 	"github.com/eclesh/welford"
 	"github.com/gorilla/websocket"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 // Config represents configuration options for a crossbar instance

@@ -6,7 +6,7 @@ import (
 
 	"github.com/eclesh/welford"
 	"github.com/gorilla/websocket"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 //Config represents configuration of the relay & lets configuration be passed as argument to permit testing

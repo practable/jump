@@ -27,10 +27,10 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/practable/relay/internal/permission"
-	"github.com/practable/relay/internal/shellaccess/restapi"
-	"github.com/practable/relay/internal/shellaccess/restapi/operations"
-	"github.com/practable/relay/internal/ttlcode"
+	"github.com/practable/jump/internal/permission"
+	"github.com/practable/jump/internal/shellaccess/restapi"
+	"github.com/practable/jump/internal/shellaccess/restapi/operations"
+	"github.com/practable/jump/internal/ttlcode"
 )
 
 // API starts the API
