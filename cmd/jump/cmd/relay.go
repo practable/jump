@@ -23,40 +23,40 @@ import (
 	"sync"
 
 	"github.com/ory/viper"
+	"github.com/practable/jump/internal/shellrelay"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/practable/jump/internal/shellrelay"
 )
 
 // relayCmd represents the relay command
 var relayCmd = &cobra.Command{
 	Use:   "relay",
-	Short: "shell relay connects shell clients to shell hosts",
+	Short: "jump relay connects jump clients to jump hosts",
 	Long: `Set the operating paramters with environment variables, for example
 
-export SHELLRELAY_ACCESSPORT=10001
-export SHELLRELAY_ACCESSFQDN=https://access.example.io
-export SHELLRELAY_RELAYPORT=10000
-export SHELLRELAY_RELAYFQDN=wss://relay-access.example.io
-export SHELLRELAY_SECRET=$your_secret
-export SHELLRELAY_DEVELOPMENT=true
-shell relay
+export JUMPRELAY_ACCESSPORT=10001
+export JUMPRELAY_ACCESSFQDN=https://access.example.io
+export JUMPRELAY_RELAYPORT=10000
+export JUMPRELAY_RELAYFQDN=wss://relay-access.example.io
+export JUMPRELAY_SECRET=$your_secret
+export JUMPRELAY_DEVELOPMENT=true
+jump relay
 
 It is expected that you will reverse proxy incoming connections (e.g. with nginx or apache). 
-No provision is made for handling TLS in shell relay because this is more convenient
+No provision is made for handling TLS in jump relay because this is more convenient
 than separately managing certificates, especially when load balancing as may be required.
 Note that load balancing takes place at the access phase, with the subsequent connection
 being made by the associated relay. The FQDN of your relay access points must be distinct,
 so that this affinity is maintained. The FQDN of the access points on the other hand, must
 be the same, so that load balancing can be applied in your reverse proxy. All connections 
 are individual so connections to a particular host can be simultaneously made in different 
-shell relay instances, so long as the relay connection is made in the same instance which
+jump relay instances, so long as the relay connection is made in the same instance which
 handled the access (see comment above on setting target FQDN to be distinct, so that 
 websocket connections are reverse proxied to the correct instance).
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("SHELLRELAY")
+		viper.SetEnvPrefix("JUMPRELAY")
 		viper.AutomaticEnv()
 
 		viper.SetDefault("accessport", 8080)
@@ -90,15 +90,15 @@ websocket connections are reverse proxied to the correct instance).
 		// check inputs
 
 		if secret == "" {
-			fmt.Println("SHELLRELAY_SECRET not set")
+			fmt.Println("JUMPRELAY_SECRET not set")
 			os.Exit(1)
 		}
 		if audience == "" {
-			fmt.Println("SHELLRELAY_RELAYFQDN not set")
+			fmt.Println("JUMPRELAY_RELAYFQDN not set")
 			os.Exit(1)
 		}
 		if target == "" {
-			fmt.Println("SHELLRELAY_TARGETFQDN not set")
+			fmt.Println("JUMPRELAY_TARGETFQDN not set")
 			os.Exit(1)
 		}
 

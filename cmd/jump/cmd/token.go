@@ -23,28 +23,28 @@ import (
 	"time"
 
 	"github.com/ory/viper"
-	"github.com/spf13/cobra"
 	"github.com/practable/jump/internal/shellaccess"
+	"github.com/spf13/cobra"
 )
 
 // hostCmd represents the host command
 var tokenCmd = &cobra.Command{
 	Use:   "token",
-	Short: "shell token generates a new token for authenticating to shell relay",
+	Short: "jump token generates a new token for authenticating to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
 
-export SHELLTOKEN_LIFETIME=3600
-export SHELLTOKEN_ROLE=client
-export SHELLTOKEN_SECRET=somesecret
-export SHELLTOKEN_TOPIC=123
-export SHELLTOKEN_CONNECTIONTYPE=shell
-export SHELLTOKEN_AUDIENCE=https://shell-access.example.io
-bearer=$(shell token)
+export JUMPTOKEN_LIFETIME=3600
+export JUMPTOKEN_ROLE=client
+export JUMPTOKEN_SECRET=somesecret
+export JUMPTOKEN_TOPIC=123
+export JUMPTOKEN_CONNECTIONTYPE=jump
+export JUMPTOKEN_AUDIENCE=https://jump-access.example.io
+bearer=$(jump token)
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("SHELLTOKEN")
+		viper.SetEnvPrefix("JUMPTOKEN")
 		viper.AutomaticEnv()
 
 		lifetime := viper.GetInt64("lifetime")
@@ -57,27 +57,27 @@ bearer=$(shell token)
 		// check inputs
 
 		if lifetime == 0 {
-			fmt.Println("SHELLTOKEN_LIFETIME not set")
+			fmt.Println("JUMPTOKEN_LIFETIME not set")
 			os.Exit(1)
 		}
 		if role == "" {
-			fmt.Println("SHELLTOKEN_ROLE not set")
+			fmt.Println("JUMPTOKEN_ROLE not set")
 			os.Exit(1)
 		}
 		if secret == "" {
-			fmt.Println("SHELLTOKEN_SECRET not set")
+			fmt.Println("JUMPTOKEN_SECRET not set")
 			os.Exit(1)
 		}
 		if topic == "" {
-			fmt.Println("SHELLTOKEN_TOPIC not set")
+			fmt.Println("JUMPTOKEN_TOPIC not set")
 			os.Exit(1)
 		}
 		if connectionType == "" {
-			fmt.Println("SHELLTOKEN_CONNECTIONTYPE not set")
+			fmt.Println("JUMPTOKEN_CONNECTIONTYPE not set")
 			os.Exit(1)
 		}
 		if audience == "" {
-			fmt.Println("SHELLTOKEN_AUDIENCE not set")
+			fmt.Println("JUMPTOKEN_AUDIENCE not set")
 			os.Exit(1)
 		}
 

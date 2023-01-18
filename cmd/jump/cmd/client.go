@@ -31,17 +31,17 @@ import (
 // clientCmd represents the client command
 var clientCmd = &cobra.Command{
 	Use:   "client",
-	Short: "shell client forwards local shell logins to shell relay",
+	Short: "jump client forwards local jump logins to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
-export SHELLCLIENT_LOCALPORT=22
-export SHELLCLIENT_RELAYSESSION=https://access.example.io/shell/abc123
-export SHELLCLIENT_TOKEN=ey...<snip>
-export SHELLCLIENT_DEVELOPMENT=true
-shell client
+export JUMPCLIENT_LOCALPORT=22
+export JUMPCLIENT_RELAYSESSION=https://access.example.io/jump/abc123
+export JUMPCLIENT_TOKEN=ey...<snip>
+export JUMPCLIENT_DEVELOPMENT=true
+jump client
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("SHELLCLIENT")
+		viper.SetEnvPrefix("JUMPCLIENT")
 		viper.AutomaticEnv()
 
 		viper.SetDefault("localport", 8082)
@@ -72,11 +72,11 @@ shell client
 		// check inputs
 
 		if relaySession == "" {
-			fmt.Println("SHELLCLIENT_RELAYSESSION not set")
+			fmt.Println("JUMPCLIENT_RELAYSESSION not set")
 			os.Exit(1)
 		}
 		if token == "" {
-			fmt.Println("SHELLCLIENT_TOKEN not set")
+			fmt.Println("JUMPCLIENT_TOKEN not set")
 			os.Exit(1)
 		}
 

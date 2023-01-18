@@ -28,7 +28,7 @@ var logFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "shell",
+	Use:   "jump",
 	Short: "Shell is a set of services for relaying ssh connections",
 	Long: `Shell is a set of services for relaying ssh connections.
 Three services required in total for a single connection:

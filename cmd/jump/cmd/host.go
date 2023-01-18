@@ -24,26 +24,26 @@ import (
 	"strconv"
 
 	"github.com/ory/viper"
+	"github.com/practable/jump/internal/shellhost"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/practable/jump/internal/shellhost"
 )
 
 // hostCmd represents the host command
 var hostCmd = &cobra.Command{
 	Use:   "host",
-	Short: "shell host connects a local shell login service to shell relay",
+	Short: "jump host connects a local jump login service to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
-export SHELLHOST_LOCALPORT=22
-export SHELLHOST_RELAYSESSION=https://access.example.io/shell/abc123
-export SHELLHOST_TOKEN=ey...<snip>
-export SHELLHOST_DEVELOPMENT=true
-shell host
+export JUMPHOST_LOCALPORT=22
+export JUMPHOST_RELAYSESSION=https://access.example.io/jump/abc123
+export JUMPHOST_TOKEN=ey...<snip>
+export JUMPHOST_DEVELOPMENT=true
+jump host
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("SHELLHOST")
+		viper.SetEnvPrefix("JUMPHOST")
 		viper.AutomaticEnv()
 
 		viper.SetDefault("localport", 22)
@@ -71,11 +71,11 @@ shell host
 		// check inputs
 
 		if relaySession == "" {
-			fmt.Println("SHELLHOST_RELAYSESSION not set")
+			fmt.Println("JUMPHOST_RELAYSESSION not set")
 			os.Exit(1)
 		}
 		if token == "" {
-			fmt.Println("SHELLHOST_TOKEN not set")
+			fmt.Println("JUMPHOST_TOKEN not set")
 			os.Exit(1)
 		}
 
