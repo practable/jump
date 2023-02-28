@@ -71,11 +71,11 @@ jump host
 		// check inputs
 
 		if access == "" {
-			fmt.Println("JUMPHOST_RELAYSESSION not set")
+			fmt.Println("JUMP_HOST_ACCESS not set")
 			os.Exit(1)
 		}
 		if token == "" {
-			fmt.Println("JUMPHOST_TOKEN not set")
+			fmt.Println("JUMP_HOST_TOKEN not set")
 			os.Exit(1)
 		}
 
