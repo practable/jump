@@ -34,28 +34,28 @@ var hostCmd = &cobra.Command{
 	Use:   "host",
 	Short: "jump host connects a local jump login service to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
-export JUMPHOST_LOCALPORT=22
-export JUMPHOST_RELAYSESSION=https://access.example.io/jump/abc123
-export JUMPHOST_TOKEN=ey...<snip>
-export JUMPHOST_DEVELOPMENT=true
+export JUMP_HOST_LOCAL_PORT=22
+export JUMP_HOST_ACCESS=https://access.example.io/jump/abc123
+export JUMP_HOST_TOKEN=ey...<snip>
+export JUMP_HOST_DEVELOPMENT=true
 jump host
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("JUMPHOST")
+		viper.SetEnvPrefix("JUMP_HOST")
 		viper.AutomaticEnv()
 
-		viper.SetDefault("localport", 22)
-		localPort := viper.GetInt("localport")
-		relaySession := viper.GetString("relaysession")
+		viper.SetDefault("local_port", 22)
+		localPort := viper.GetInt("local_port")
+		access := viper.GetString("access")
 		token := viper.GetString("token")
 		development := viper.GetBool("development")
 
 		if development {
 			// development environment
 			fmt.Println("Development mode - logging output to stdout")
-			fmt.Printf("Local port: %d for %s with %d-byte token\n", localPort, relaySession, len(token))
+			fmt.Printf("Local port: %d for %s with %d-byte token\n", localPort, access, len(token))
 			log.SetReportCaller(true)
 			log.SetFormatter(&log.TextFormatter{})
 			log.SetLevel(log.InfoLevel)
@@ -70,7 +70,7 @@ jump host
 
 		// check inputs
 
-		if relaySession == "" {
+		if access == "" {
 			fmt.Println("JUMPHOST_RELAYSESSION not set")
 			os.Exit(1)
 		}
@@ -95,7 +95,7 @@ jump host
 
 		local := "localhost:" + strconv.Itoa(localPort)
 
-		go shellhost.Host(ctx, local, relaySession, token)
+		go shellhost.Host(ctx, local, access, token)
 
 		<-ctx.Done() //unlikely to exit this way, but block all the same
 		os.Exit(0)

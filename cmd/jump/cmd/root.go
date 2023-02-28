@@ -29,15 +29,15 @@ var logFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "jump",
-	Short: "Shell is a set of services for relaying ssh connections",
-	Long: `Shell is a set of services for relaying ssh connections.
+	Short: "Jump is a set of services for relaying ssh connections",
+	Long: `Jump is a set of services for relaying ssh connections.
 Three services required in total for a single connection:
   host: the unattended remote machine 
   client: the attended local machine 
   relay: runs at a public IP address, shared out of band with the host and client
 
-A relay can handle multiple connections. An administrator with multiple hosts to access, 
-should start a separate client instance for each host they wish to connect to.
+A jump relay can handle multiple connections. 
+Start a separate jump client instance for each jump host you wish to access.
 `,
 }
 
