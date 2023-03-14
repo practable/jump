@@ -18,9 +18,13 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/ory/viper"
 	"github.com/practable/jump/internal/shellrelay"
@@ -30,16 +34,24 @@ import (
 
 // relayCmd represents the relay command
 var relayCmd = &cobra.Command{
-	Use:   "relay",
+	Use:   "jump",
 	Short: "jump relay connects jump clients to jump hosts",
 	Long: `Set the operating paramters with environment variables, for example
 
-export JUMPRELAY_ACCESSPORT=10001
-export JUMPRELAY_ACCESSFQDN=https://access.example.io
-export JUMPRELAY_RELAYPORT=10000
-export JUMPRELAY_RELAYFQDN=wss://relay-access.example.io
-export JUMPRELAY_SECRET=$your_secret
-export JUMPRELAY_DEVELOPMENT=true
+
+export JUMP_AUDIENCE=https://example.org
+export JUMP_BUFFER_SIZE=128
+export JUMP_LOG_LEVEL=warn
+export JUMP_LOG_FORMAT=json
+export JUMP_LOG_FILE=/var/log/relay/relay.log
+export JUMP_PORT_ACCESS=3000
+export JUMP_PORT_PROFILE=6061
+export JUMP_PORT_RELAY=3001
+export JUMP_PROFILE=true
+export JUMP_SECRET=somesecret
+export JUMP_STATS_EVERY=5s
+export JUMP_TIDY_EVERY=5m 
+export JUMP_URL=wss://example.io/relay 
 jump relay
 
 It is expected that you will reverse proxy incoming connections (e.g. with nginx or apache). 
@@ -56,55 +68,149 @@ websocket connections are reverse proxied to the correct instance).
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("JUMPRELAY")
+		viper.SetEnvPrefix("JUMP")
 		viper.AutomaticEnv()
 
-		viper.SetDefault("accessport", 8080)
-		viper.SetDefault("relayport", 8081)
+		viper.SetDefault("audience", "") //"" so we can check it's been provided
+		viper.SetDefault("buffer_size", 128)
+		viper.SetDefault("log_file", "/var/log/relay/relay.log")
+		viper.SetDefault("log_format", "json")
+		viper.SetDefault("log_level", "warn")
+		viper.SetDefault("port_access", 3002)
+		viper.SetDefault("port_relay", 3003)
+		viper.SetDefault("profile", "true")
+		viper.SetDefault("profile_port", 6062)
+		viper.SetDefault("secret", "") //so we can check it's been provided
+		viper.SetDefault("stats_every", "5s")
+		viper.SetDefault("tidy_every", "5m")
+		viper.SetDefault("url", "") //so we can check it's been provided
 
-		accessPort := viper.GetInt("accessport")
-		relayPort := viper.GetInt("relayport")
-		development := viper.GetBool("development")
+		audience := viper.GetString("audience")
+		bufferSize := viper.GetInt64("buffer_size")
+		logFile := viper.GetString("log_file")
+		logFormat := viper.GetString("log_format")
+		logLevel := viper.GetString("log_level")
+		portAccess := viper.GetInt("port_access")
+		portProfile := viper.GetInt("port_profile")
+		portRelay := viper.GetInt("port_relay")
+		profile := viper.GetBool("profile")
 		secret := viper.GetString("secret")
-		audience := viper.GetString("accessfqdn")
-		target := viper.GetString("relayfqdn")
+		statsEveryStr := viper.GetString("stats_every")
+		tidyEveryStr := viper.GetString("tidy_every")
+		URL := viper.GetString("url")
 
-		if development {
-			// development environment
+		// Sanity checks
+		ok := true
 
-			fmt.Println("Development mode - logging output to stdout")
-			fmt.Printf("Access port: %d for %s\nRelay port: %d for %s\n", accessPort, audience, relayPort, target)
-			log.SetReportCaller(true)
-			log.SetFormatter(&log.TextFormatter{})
+		if audience == "" {
+			fmt.Println("You must set JUMP_AUDIENCE")
+			ok = false
+		}
+
+		if secret == "" {
+			fmt.Println("You must set JUMP_SECRET")
+			ok = false
+		}
+
+		if URL == "" {
+			fmt.Println("You must set JUMP_URL")
+			ok = false
+		}
+
+		if !ok {
+			os.Exit(1)
+		}
+
+		// parse durations
+		statsEvery, err := time.ParseDuration(statsEveryStr)
+
+		if err != nil {
+			fmt.Print("cannot parse duration in JUMP_STATS_EVERY=" + statsEveryStr)
+			os.Exit(1)
+		}
+
+		tidyEvery, err := time.ParseDuration(tidyEveryStr)
+
+		if err != nil {
+			fmt.Print("cannot parse duration in JUMP_TIDY_EVERY=" + tidyEveryStr)
+			os.Exit(1)
+		}
+
+		// set up logging
+		switch strings.ToLower(logLevel) {
+		case "trace":
+			log.SetLevel(log.TraceLevel)
+		case "debug":
+			log.SetLevel(log.DebugLevel)
+		case "info":
 			log.SetLevel(log.InfoLevel)
-			log.SetOutput(os.Stdout)
+		case "warn":
+			log.SetLevel(log.WarnLevel)
+		case "error":
+			log.SetLevel(log.ErrorLevel)
+		case "fatal":
+			log.SetLevel(log.FatalLevel)
+		case "panic":
+			log.SetLevel(log.PanicLevel)
+		default:
+			fmt.Println("BOOK_LOG_LEVEL can be trace, debug, info, warn, error, fatal or panic but not " + logLevel)
+			os.Exit(1)
+		}
+
+		switch strings.ToLower(logFormat) {
+		case "json":
+			log.SetFormatter(&log.JSONFormatter{})
+		case "text":
+			log.SetFormatter(&log.TextFormatter{})
+		default:
+			fmt.Println("BOOK_LOG_FORMAT can be json or text but not " + logLevel)
+			os.Exit(1)
+		}
+
+		if strings.ToLower(logFile) == "stdout" {
+
+			log.SetOutput(os.Stdout) //
 
 		} else {
 
-			//production environment
-			log.SetFormatter(&log.JSONFormatter{})
-			log.SetLevel(log.WarnLevel)
-
+			file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err == nil {
+				log.SetOutput(file)
+			} else {
+				log.Infof("Failed to log to %s, logging to default stderr", logFile)
+			}
 		}
 
-		// check inputs
+		// Report useful info
+		log.Infof("jump version: %s", versionString())
+		log.Infof("Audience: [%s]", audience)
+		log.Infof("Buffer Size: [%d]", bufferSize)
+		log.Infof("Log file: [%s]", logFile)
+		log.Infof("Log format: [%s]", logFormat)
+		log.Infof("Log level: [%s]", logLevel)
+		log.Infof("Port for access: [%d]", portAccess)
+		log.Infof("Port for profile: [%d]", portProfile)
+		log.Infof("Port for relay: [%d]", portRelay)
+		log.Infof("Profiling is on: [%t]", profile)
+		log.Debugf("Secret: [%s...%s]", secret[:4], secret[len(secret)-4:])
+		log.Infof("Stats every: [%s]", statsEvery)
+		log.Infof("Tidy every: [%s]", tidyEvery)
+		log.Infof("URL: [%s]", URL)
 
-		if secret == "" {
-			fmt.Println("JUMPRELAY_SECRET not set")
-			os.Exit(1)
+		// Optionally start the profiling server
+		if profile {
+			go func() {
+				url := "localhost:" + strconv.Itoa(portProfile)
+				err := http.ListenAndServe(url, nil)
+				if err != nil {
+					log.Errorf(err.Error())
+				}
+			}()
 		}
-		if audience == "" {
-			fmt.Println("JUMPRELAY_RELAYFQDN not set")
-			os.Exit(1)
-		}
-		if target == "" {
-			fmt.Println("JUMPRELAY_TARGETFQDN not set")
-			os.Exit(1)
-		}
-
-		closed := make(chan struct{})
 
 		var wg sync.WaitGroup
+
+		closed := make(chan struct{})
 
 		c := make(chan os.Signal, 1)
 
@@ -120,7 +226,17 @@ websocket connections are reverse proxied to the correct instance).
 
 		wg.Add(1)
 
-		go shellrelay.Relay(closed, &wg, accessPort, relayPort, audience, secret, target)
+		config := shellrelay.Config{
+			AccessPort: portAccess,
+			Audience:   audience,
+			BufferSize: bufferSize,
+			RelayPort:  portRelay,
+			Secret:     secret,
+			StatsEvery: statsEvery,
+			Target:     URL,
+		}
+
+		go shellrelay.Relay(closed, &wg, config)
 
 		wg.Wait()
 

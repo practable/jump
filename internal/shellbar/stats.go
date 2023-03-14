@@ -17,27 +17,28 @@ func statsClient(closed <-chan struct{}, wg *sync.WaitGroup, hub *Hub, config Co
 
 	tx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
 	rx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-	stats := &Stats{connectedAt: time.Now(), tx: tx, rx: rx}
+	stats := &Stats{tx: tx, rx: rx}
 
 	client := &Client{hub: hub,
-		send:       make(chan message, 256),
-		topic:      "stats",
-		stats:      stats,
-		name:       "stats-generator-" + uuid.New().String(),
-		audience:   config.Audience,
-		userAgent:  "shellbar",
-		remoteAddr: "internal",
-		canRead:    true,
-		canWrite:   true,
+		connectedAt: time.Now(),
+		send:        make(chan message, 256),
+		topic:       "stats",
+		stats:       stats,
+		name:        "stats-generator-" + uuid.New().String(),
+		audience:    config.Audience,
+		userAgent:   "shellbar",
+		remoteAddr:  "internal",
+		canRead:     true,
+		canWrite:    true,
 	}
 	client.hub.register <- client
 
-	go client.statsReporter(closed, wg)
+	go client.statsReporter(closed, wg, config)
 
 }
 
 // StatsReporter sends a stats update in response to {"cmd":"update"}.
-func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
+func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup, config Config) {
 
 	defer wg.Done()
 
@@ -45,12 +46,6 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 
 	for {
 
-		// TODO consider this scheme again
-		// update on receiving a message
-		// or if 60 seconds since last update
-		// whichever is sooner
-		// newly connecting pages can send a message
-		time.Sleep(time.Second) //rate limit to one message a second
 		select {
 		case <-closed:
 			log.Trace("StatsReporter closed")
@@ -64,7 +59,7 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 			err := json.Unmarshal(msg.data, &sc)
 
 			if err != nil {
-				log.WithFields(log.Fields{"error": err, "msg": string(msg.data)}).Trace("statsReporter could not marshall into json")
+				log.WithFields(log.Fields{"error": err, "msg": string(msg.data)}).Error("statsReporter could not unmarshal into json")
 			}
 
 			log.WithField("cmd", sc.Command).Trace("statsReporter received command")
@@ -75,6 +70,7 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 				doUpdate = true
 			}
 
+			// drain the channel to avoid stale requests on next iteration of the loop
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				msg, ok = <-c.send
@@ -85,7 +81,7 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 				err = json.Unmarshal(msg.data, &sc)
 
 				if err != nil {
-					log.WithFields(log.Fields{"error": err, "msg": string(msg.data)}).Trace("statsReporter could not marshall into json")
+					log.WithFields(log.Fields{"error": err, "msg": string(msg.data)}).Error("statsReporter could not marshall into json")
 				}
 
 				log.WithField("cmd", sc.Command).Trace("statsReporter received command")
@@ -97,11 +93,11 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 
 			log.WithField("doUpdate", doUpdate).Trace("statsReporter do update?")
 
-			if !doUpdate { //don't send updated stats
+			if !doUpdate { //don't send updated stats, because no command was valid
 				continue
 			}
 
-		case <-time.After(60 * time.Second):
+		case <-time.After(config.StatsEvery):
 			log.Trace("StatsReporter routine send...")
 		}
 
@@ -150,13 +146,23 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup) {
 
 				client.stats.rx.mu.RUnlock()
 
+				c, err := client.connectedAt.UTC().MarshalText()
+				if err != nil {
+					log.WithFields(log.Fields{"error": err.Error(), "topic": client.topic, "connectedAt": client.connectedAt}).Error("stats cannot marshal connectedAt time to string")
+				}
+				ea, err := client.expiresAt.UTC().MarshalText()
+				if err != nil {
+					log.WithFields(log.Fields{"error": err.Error(), "topic": client.topic, "expiresAt": client.expiresAt}).Error("stats cannot marshal expiresAt time to string")
+				}
+
 				report := &ClientReport{
-					Topic:      client.topic,
-					CanRead:    client.canRead,
-					CanWrite:   client.canWrite,
-					Connected:  client.stats.connectedAt.String(),
-					RemoteAddr: client.remoteAddr,
-					UserAgent:  client.userAgent,
+					Topic:       client.topic,
+					CanRead:     client.canRead,
+					CanWrite:    client.canWrite,
+					ConnectedAt: string(c),
+					ExpiresAt:   string(ea),
+					RemoteAddr:  client.remoteAddr,
+					UserAgent:   client.userAgent,
 					Stats: RxTx{
 						Tx: tx,
 						Rx: rx,

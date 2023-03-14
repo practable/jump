@@ -9,8 +9,8 @@ import (
 	"github.com/eclesh/welford"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
 	"github.com/practable/jump/internal/permission"
+	log "github.com/sirupsen/logrus"
 )
 
 // ConnectionType represents whether the connection is for Session, Shell or Unsupported
@@ -143,22 +143,24 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 		// initialise statistics
 		tx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
 		rx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-		stats := &Stats{connectedAt: time.Now(), tx: tx, rx: rx}
+		stats := &Stats{tx: tx, rx: rx}
 
 		client := &Client{hub: hub,
-			conn:           conn,
-			send:           make(chan message, 256),
-			topic:          topic + token.TopicSalt,
-			stats:          stats,
-			name:           uuid.New().String(),
-			userAgent:      r.UserAgent(),
-			remoteAddr:     r.Header.Get("X-Forwarded-For"),
 			audience:       config.Audience,
 			canRead:        canRead,
 			canWrite:       canWrite,
+			clearToSend:    make(chan struct{}),
+			conn:           conn,
+			connectedAt:    time.Now(),
+			expiresAt:      time.Unix((*token.ExpiresAt).Unix(), 0),
 			hostAlertUUID:  uuid.New().String(),
 			mustWaitToSend: token.AlertHost,
-			clearToSend:    make(chan struct{}),
+			name:           uuid.New().String(),
+			remoteAddr:     r.Header.Get("X-Forwarded-For"),
+			send:           make(chan message, config.BufferSize),
+			stats:          stats,
+			topic:          topic + token.TopicSalt,
+			userAgent:      r.UserAgent(),
 		}
 		client.hub.register <- client
 

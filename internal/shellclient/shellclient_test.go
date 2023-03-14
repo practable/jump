@@ -16,20 +16,22 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
-	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
 	"github.com/practable/jump/internal/shellbar"
 	"github.com/practable/jump/internal/shellhost"
 	"github.com/practable/jump/internal/shellrelay"
 	"github.com/practable/jump/internal/tcpconnect"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
+
+var debug bool
 
 func init() {
 
-	debug := false
+	debug = false
 	if debug {
 		log.SetReportCaller(true)
 		log.SetLevel(log.TraceLevel)
@@ -60,19 +62,28 @@ func TestShellClient(t *testing.T) {
 	accessPort := ports[1]
 	clientPort := ports[2]
 
-	shellaccessURI := "http://[::]:" + strconv.Itoa(accessPort)
-	shellrelayURI := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
+	audience := "http://[::]:" + strconv.Itoa(accessPort)
+	target := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
 	shellclientURI := "http://[::]:" + strconv.Itoa(clientPort)
 
-	log.Debug(fmt.Sprintf("shellaccessURI:%s\n", shellaccessURI))
-	log.Debug(fmt.Sprintf("shellrelayURI:%s\n", shellrelayURI))
+	log.Debug(fmt.Sprintf("audience:%s\n", audience))
+	log.Debug(fmt.Sprintf("target:%s\n", target))
 	log.Debug(fmt.Sprintf("shellclientURI:%s\n", shellclientURI))
 
 	secret := "testsecret"
 
 	wg.Add(1)
 
-	go shellrelay.Relay(closed, &wg, accessPort, relayPort, shellaccessURI, secret, shellrelayURI)
+	config := shellrelay.Config{
+		AccessPort: accessPort,
+		Audience:   audience,
+		RelayPort:  relayPort,
+		Secret:     secret,
+		Target:     target,
+		StatsEvery: time.Duration(time.Second),
+	}
+
+	go shellrelay.Relay(closed, &wg, config)
 
 	// setup mock sshd
 	ctx, cancel := context.WithCancel(context.Background())
@@ -102,12 +113,12 @@ func TestShellClient(t *testing.T) {
 
 	begin := time.Now().Unix() - 1 //ensure it's in the past
 	end := begin + 180
-	claims := permission.NewToken(shellaccessURI, ct, session, scopes, begin, begin, end)
+	claims := permission.NewToken(audience, ct, session, scopes, begin, begin, end)
 	hostToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	hostBearer, err := hostToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
-	go shellhost.Host(ctx, "localhost"+sshduri, shellaccessURI+"/shell/"+session, hostBearer)
+	go shellhost.Host(ctx, "localhost"+sshduri, audience+"/shell/"+session, hostBearer)
 
 	time.Sleep(time.Second)
 	time.Sleep(timeout)
@@ -118,12 +129,12 @@ func TestShellClient(t *testing.T) {
 	// *** Setup shellclient ***
 
 	scopes = []string{"client"} //host, client scopes are known only to access
-	claims = permission.NewToken(shellaccessURI, "shell", session, scopes, begin, begin, end)
+	claims = permission.NewToken(audience, "shell", session, scopes, begin, begin, end)
 	clientToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	clientBearer, err := clientToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
-	go Client(ctx, clientPort, shellaccessURI+"/shell/"+session, clientBearer)
+	go Client(ctx, clientPort, audience+"/shell/"+session, clientBearer)
 
 	time.Sleep(time.Second)
 	time.Sleep(timeout)
@@ -231,13 +242,13 @@ func TestShellClient(t *testing.T) {
 
 	// while connected, get stats
 	scopes = []string{"stats"}
-	claims = permission.NewToken(shellaccessURI, "shell", "stats", scopes, begin, begin, end)
+	claims = permission.NewToken(audience, "shell", "stats", scopes, begin, begin, end)
 	statsToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	statsBearer, err := statsToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
 	stats := reconws.New()
-	go stats.ReconnectAuth(ctx, shellaccessURI+"/shell/stats", statsBearer)
+	go stats.ReconnectAuth(ctx, audience+"/shell/stats", statsBearer)
 
 	cmd, err := json.Marshal(shellbar.StatsCommand{Command: "update"})
 
@@ -247,7 +258,9 @@ func TestShellClient(t *testing.T) {
 
 	select {
 	case msg := <-stats.In:
-
+		if debug {
+			t.Log("Stats message received")
+		}
 		var reports []*shellbar.ClientReport
 
 		err := json.Unmarshal(msg.Data, &reports)

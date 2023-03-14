@@ -9,22 +9,6 @@ import (
 	"github.com/practable/jump/internal/ttlcode"
 )
 
-//Config represents configuration of the relay & lets configuration be passed as argument to permit testing
-type Config struct {
-
-	// Listen is the listening port
-	Listen int
-
-	// Audience must match the host in token
-	Audience string
-
-	// Secret is used to validating statsTokens
-	Secret string
-
-	// ExchangeCode swaps a code for the associated Token
-	CodeStore *ttlcode.CodeStore
-}
-
 // NewDefaultConfig returns a pointer to a new, default, Config
 func NewDefaultConfig() *Config {
 	c := &Config{}
@@ -65,6 +49,12 @@ type Client struct {
 
 	// The websocket connection.
 	conn *websocket.Conn
+
+	// connectedAt represents when the current connection started
+	connectedAt time.Time
+
+	// expiresAt represents when the connection's token expires
+	expiresAt time.Time
 
 	// Buffered channel of outbound messages.
 	send chan message
@@ -117,19 +107,21 @@ type ReportStats struct {
 
 // ClientReport represents statistics on a client, and omits non-serialisable internal references
 type ClientReport struct {
+	CanRead bool `json:"can_read"`
+
+	CanWrite bool `json:"can_write"`
+
+	ConnectedAt string `json:"connected_at"`
+
+	ExpiresAt string `json:"expires_at"`
+
+	RemoteAddr string `json:"remote_address"`
+
+	Stats RxTx `json:"statistics"`
+
 	Topic string `json:"topic"`
 
-	CanRead bool `json:"canRead"`
-
-	CanWrite bool `json:"canWrite"`
-
-	Connected string `json:"connected"`
-
-	RemoteAddr string `json:"remoteAddr"`
-
-	UserAgent string `json:"userAgent"`
-
-	Stats RxTx `json:"stats"`
+	UserAgent string `json:"user_agent"`
 }
 
 // StatsCommand represents a command relating to collection of statistics
@@ -139,10 +131,7 @@ type StatsCommand struct {
 
 // Stats represents statistics for (video) frames received and transmitted
 type Stats struct {
-	connectedAt time.Time
-
 	rx *Frames
-
 	tx *Frames
 }
 

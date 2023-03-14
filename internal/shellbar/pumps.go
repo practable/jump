@@ -91,7 +91,7 @@ func (c *Client) readPump() {
 			if c.stats.tx.ns.Count() > 0 {
 				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
 			} else {
-				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
+				c.stats.tx.ns.Add(float64(t.UnixNano() - c.connectedAt.UnixNano()))
 			}
 			c.stats.tx.last = t
 			c.stats.tx.size.Add(float64(len(data)))
@@ -178,7 +178,7 @@ func (c *Client) writePump(closed <-chan struct{}, cancelled <-chan struct{}) {
 				if c.stats.rx.ns.Count() > 0 {
 					c.stats.rx.ns.Add(float64(t.UnixNano() - c.stats.rx.last.UnixNano()))
 				} else {
-					c.stats.rx.ns.Add(float64(t.UnixNano() - c.stats.connectedAt.UnixNano()))
+					c.stats.rx.ns.Add(float64(t.UnixNano() - c.connectedAt.UnixNano()))
 				}
 				c.stats.rx.last = t
 				c.stats.rx.size.Add(float64(size))

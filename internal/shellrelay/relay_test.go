@@ -15,12 +15,12 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
-	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
 	"github.com/practable/jump/internal/shellbar"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRelay(t *testing.T) {
@@ -59,7 +59,15 @@ func TestRelay(t *testing.T) {
 
 	wg.Add(1)
 
-	go Relay(closed, &wg, accessPort, relayPort, audience, secret, target)
+	config := Config{
+		AccessPort: accessPort,
+		Audience:   audience,
+		RelayPort:  relayPort,
+		Secret:     secret,
+		Target:     target,
+	}
+
+	go Relay(closed, &wg, config)
 
 	time.Sleep(time.Second) // big safety margin to get crossbar running
 

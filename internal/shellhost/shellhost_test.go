@@ -16,14 +16,14 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
-	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
 	"github.com/practable/jump/internal/shellbar"
 	"github.com/practable/jump/internal/shellrelay"
 	"github.com/practable/jump/internal/tcpconnect"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -68,7 +68,14 @@ func TestShellHost(t *testing.T) {
 
 	wg.Add(1)
 
-	go shellrelay.Relay(closed, &wg, accessPort, relayPort, shellaccessURI, secret, shellrelayURI)
+	config := shellrelay.Config{
+		AccessPort: accessPort,
+		Audience:   shellaccessURI,
+		RelayPort:  relayPort,
+		Secret:     secret,
+		Target:     shellrelayURI,
+	}
+	go shellrelay.Relay(closed, &wg, config)
 
 	// setup mock sshd
 	ctx, cancel := context.WithCancel(context.Background())

@@ -26,12 +26,31 @@ import (
 	"github.com/go-openapi/runtime/security"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/shellaccess/restapi"
 	"github.com/practable/jump/internal/shellaccess/restapi/operations"
 	"github.com/practable/jump/internal/ttlcode"
+	log "github.com/sirupsen/logrus"
 )
+
+//Config represents configuration of the relay & lets configuration be passed as argument to permit testing
+type Config struct {
+
+	// Audience must match the host in token
+	Audience string
+
+	// ExchangeCode swaps a code for the associated Token
+	CodeStore *ttlcode.CodeStore
+
+	// Listen is the port this service listens on
+	Listen int
+
+	// Secret is used to validate tokens
+	Secret string
+
+	//Target is the FQDN of the relay instance
+	Target string
+}
 
 // API starts the API
 // Inputs
@@ -43,7 +62,7 @@ import (
 // @secret- HMAC shared secret which incoming tokens will be signed with
 // @cs - pointer to the CodeStore this API shares with the shellbar websocket relay
 // @options - for future backwards compatibility (no options currently available)
-func API(closed <-chan struct{}, wg *sync.WaitGroup, port int, host, secret, target string, cs *ttlcode.CodeStore) {
+func API(closed <-chan struct{}, wg *sync.WaitGroup, config Config) { // port int, host, secret, target string, cs *ttlcode.CodeStore) {
 
 	swaggerSpec, err := loads.Analyzed(restapi.SwaggerJSON, "")
 	if err != nil {
@@ -58,10 +77,10 @@ func API(closed <-chan struct{}, wg *sync.WaitGroup, port int, host, secret, tar
 	flag.Parse()
 
 	// set the port this service will run on
-	server.Port = port
+	server.Port = config.Listen
 
 	// set the Authorizer
-	api.BearerAuth = validateHeader(secret, host)
+	api.BearerAuth = validateHeader(config.Secret, config.Audience)
 
 	// set the Handlers
 	api.ShellHandler = operations.ShellHandlerFunc(func(params operations.ShellParams, principal interface{}) middleware.Responder {
@@ -151,7 +170,7 @@ func API(closed <-chan struct{}, wg *sync.WaitGroup, port int, host, secret, tar
 		// hence no handler is needed for https://{access-host}/shell/{shell_id}/{connection_id}
 
 		pt := permission.NewToken(
-			target,
+			config.Target,
 			claims.ConnectionType,
 			topic,
 			[]string{"read", "write"}, // sanitise out of abundance of caution - all use cases are read+write only
@@ -163,9 +182,9 @@ func API(closed <-chan struct{}, wg *sync.WaitGroup, port int, host, secret, tar
 		permission.SetTopicSalt(&pt, topicSalt)
 		permission.SetAlertHost(&pt, alertHost)
 
-		code := cs.SubmitToken(pt)
+		code := config.CodeStore.SubmitToken(pt)
 
-		uri := target + "/" + claims.ConnectionType + "/" + topic + "?code=" + code
+		uri := config.Target + "/" + claims.ConnectionType + "/" + topic + "?code=" + code
 
 		return operations.NewShellOK().WithPayload(
 			&operations.ShellOKBody{

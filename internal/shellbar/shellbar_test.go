@@ -16,12 +16,12 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
-	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
 	"github.com/practable/jump/internal/ttlcode"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 // NOTE don't use reconws.Reconnect for production clients anymore;
@@ -67,14 +67,15 @@ func TestShellbar(t *testing.T) {
 	secret := "somesecret"
 	cs := ttlcode.NewDefaultCodeStore()
 	config := Config{
-		Listen:    port,
-		Audience:  audience,
-		CodeStore: cs,
-		Secret:    secret,
+		Listen:     port,
+		Audience:   audience,
+		CodeStore:  cs,
+		Secret:     secret,
+		StatsEvery: time.Second,
 	}
 
 	wg.Add(1)
-	go Shellbar(config, closed, &wg)
+	go Shellbar(closed, &wg, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
 

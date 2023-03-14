@@ -15,12 +15,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/phayes/freeport"
-	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/shellaccess/restapi/operations"
 	"github.com/practable/jump/internal/ttlcode"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetPrefixFromPath(t *testing.T) {
@@ -81,7 +81,15 @@ func TestAPI(t *testing.T) {
 
 	wg.Add(1)
 
-	go API(closed, &wg, port, audience, secret, target, cs)
+	config := Config{
+		CodeStore: cs,
+		Listen:    port,
+		Audience:  audience,
+		Secret:    secret,
+		Target:    target,
+	}
+
+	go API(closed, &wg, config) //port, audience, secret, target, cs)
 
 	time.Sleep(100 * time.Millisecond)
 
