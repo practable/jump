@@ -13,6 +13,9 @@ package pipe
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net"
 	"strconv"
 	"time"
 
@@ -71,8 +74,31 @@ func (p *Pipe) RunPacket(ctx context.Context) {
 	listenURL := ":" + strconv.Itoa(p.Listen)
 	targetURL := "localhost:" + strconv.Itoa(p.Target)
 
-	go packetListen(ctx, listenURL, p.Left, p.Right)
-	go packetTarget(ctx, targetURL, p.Left, p.Right)
+	incoming, err := net.Listen("tcp", listenURL)
+
+	if err != nil {
+		log.Fatalf("could not start server on %s: %v", listenURL, err)
+	}
+
+	fmt.Printf("server running on %s\n", listenURL)
+
+	//https://www.zupzup.org/go-port-forwarding/index.html
+	client, err := incoming.Accept()
+	if err != nil {
+		log.Fatal("could not accept client connection", err)
+	}
+	defer client.Close()
+	fmt.Printf("client '%v' connected!\n", client.RemoteAddr())
+
+	target, err := net.Dial("tcp", targetURL)
+	if err != nil {
+		log.Fatal("could not connect to target", err)
+	}
+	defer target.Close()
+	fmt.Printf("connection to server %v established!\n", target.RemoteAddr())
+
+	go func() { io.Copy(target, client) }()
+	go func() { io.Copy(client, target) }()
 
 	<-ctx.Done()
 

@@ -268,8 +268,191 @@ func (c *TCPconnect) Echo(ctx context.Context, uri string) {
 
 }
 
-// HandleConn handles connections, including reading and writing
 func (c *TCPconnect) HandleConn(ctx context.Context, conn net.Conn) {
+
+	c.HandleConnOriginal(ctx, conn)
+
+}
+
+// HandleConn handles connections, including reading and writing
+func (c *TCPconnect) HandleConnDirect(ctx context.Context, conn net.Conn) {
+
+	/* just after login, got connection corrupted
+					Bad packet length 1359588090.
+				    ssh_dispatch_run_fatal: Connection to 127.0.0.1 port 2222: Connection corrupted
+			        https://security.stackexchange.com/questions/124767/what-could-cause-bad-packet-length-with-sshd
+
+		            This method combined two packets from port 22 into one (628 + 44 into 672) in response to password
+	                But did not on another occasion, yet both connections dropped ...
+
+
+	*/
+
+	id := "tcpconnect.handleConn(" + c.ID + ")"
+
+	buf := make([]byte, c.MaxFrameBytes)
+
+	go func() {
+		for {
+
+			select {
+
+			case <-ctx.Done():
+				return
+			default:
+
+				n, err := conn.Read(buf)
+
+				if err != nil {
+					time.Sleep(100 * time.Microsecond)
+					continue
+				}
+
+				c.In <- buf[:n]
+				log.Tracef("%s: wrote %d to channel", id, n)
+			}
+		}
+	}()
+
+	go func() {
+
+		for {
+
+			select {
+
+			case <-ctx.Done():
+				return
+			case data, ok := <-c.Out:
+
+				if !ok {
+					return
+				}
+
+				log.Tracef("%s: have %d to write to conn", id, len(data))
+				n, err := conn.Write(data)
+
+				if err != nil {
+					log.WithField("n", n).Errorf("%s: did not write to conn because %s", id, err.Error())
+				}
+
+			}
+		}
+	}()
+
+	<-ctx.Done() //wait or else conn is closed
+
+}
+
+// HandleConn handles connections, including reading and writing
+func (c *TCPconnect) HandleConnBuffer(ctx context.Context, conn net.Conn) {
+
+	id := "tcpconnect.handleConn(" + c.ID + ")"
+
+	var frameBuffer mutexBuffer
+
+	rawFrame := make([]byte, c.MaxFrameBytes)
+
+	glob := make([]byte, c.MaxFrameBytes)
+
+	frameBuffer.b.Reset() //else we send whole buffer on first flush
+
+	reader := bufio.NewReader(conn)
+
+	tCh := make(chan int)
+
+	// write messages to the destination
+	go func() {
+		for {
+			select {
+			case data := <-c.Out:
+				n, err := conn.Write(data)
+
+				if err != nil {
+					log.Warnf("%s: error writing  %d-byte message to conn because %s", id, len(data), err.Error())
+				}
+				if n == len(data) {
+					log.Warnf("%s: wrote %d of %d byte message to conn", id, n, len(data))
+				}
+
+				log.Debugf("%s: wrote %d-byte message to conn", id, len(data))
+			case <-ctx.Done():
+				log.Debugf("%s: write pump context cancelled", id)
+				return
+				//put this option here to avoid spinning our wheels
+			}
+		}
+	}()
+
+	// Read from the buffer, blocking if empty
+	go func() {
+
+		for {
+
+			tCh <- 0 //tell the monitoring routine we're alive
+
+			n, err := io.ReadAtLeast(reader, glob, 1)
+
+			if err == nil {
+
+				frameBuffer.mux.Lock()
+
+				_, err = frameBuffer.b.Write(glob[:n])
+
+				frameBuffer.mux.Unlock()
+
+				if err != nil {
+					log.Errorf("%v", err) //was Fatal?
+					return
+				}
+
+			} else {
+				log.Warnf("%s: error conn writing into frame buffer  %s", id, err.Error())
+				return // avoid spinning our wheels
+
+			}
+		}
+	}()
+
+	for {
+
+		select {
+
+		case <-tCh:
+
+			// do nothing, just received data from buffer
+
+		case <-time.After(1 * time.Millisecond):
+			// no new data for >= 1mS weakly implies frame has been fully sent to us
+			// this is two orders of magnitude more delay than when reading from
+			// non-empty buffer so _should_ be ok, but recheck if errors crop up on
+			// lower powered system.
+
+			//flush buffer to internal send channel
+			frameBuffer.mux.Lock()
+
+			n, err := frameBuffer.b.Read(rawFrame)
+
+			frame := rawFrame[:n]
+
+			frameBuffer.b.Reset()
+
+			frameBuffer.mux.Unlock()
+
+			if err == nil && n > 0 {
+				c.In <- frame
+				log.Tracef("%s: wrote %d-byte message to channel", id, n)
+			}
+			// don't report errors - just an empty buffer which is not a problem....
+
+		case <-ctx.Done():
+			log.Debugf("%s: read pump context cancelled", id)
+			return
+		}
+	}
+}
+
+// HandleConn handles connections, including reading and writing
+func (c *TCPconnect) HandleConnOriginal(ctx context.Context, conn net.Conn) {
 
 	id := "tcpconnect.handleConn(" + c.ID + ")"
 
