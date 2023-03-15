@@ -61,11 +61,36 @@ func (p *Pipe) Run(ctx context.Context) {
 
 	go listener.Listen(ctx, url, listenHandler(p.Left, p.Right))
 	go targetHandler(ctx, p.Target, p.Left, p.Right)
-	// TODO outward connection
 
 	<-ctx.Done()
 
 }
+
+func (p *Pipe) RunPacket(ctx context.Context) {
+
+	listenURL := ":" + strconv.Itoa(p.Listen)
+	targetURL := "localhost:" + strconv.Itoa(p.Target)
+
+	go packetListen(ctx, listenURL, p.Left, p.Right)
+	go packetTarget(ctx, targetURL, p.Left, p.Right)
+
+	<-ctx.Done()
+
+}
+
+/* HANDLERS FOR PACKET METHOD */
+
+func packetListen(ctx context.Context, URL string, left, right chan []byte) {
+	log.Error("packetListen not implemented")
+	<-ctx.Done()
+}
+
+func packetTarget(ctx context.Context, URL string, left, right chan []byte) {
+	log.Error("packetTarget not implemented")
+	<-ctx.Done()
+}
+
+/*  HANDLERS FOR ORIGINAL METHOD  */
 
 // listenHandler handles the external client
 // it receives data from the external connection and forwards it internally over channel left
