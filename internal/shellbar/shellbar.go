@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/practable/jump/internal/ttlcode"
+	log "github.com/sirupsen/logrus"
 )
 
 //Config represents configuration of the relay & lets configuration be passed as argument to permit testing
@@ -51,5 +52,7 @@ func Shellbar(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
 	wg.Wait()
 
 	parentwg.Done()
+
+	log.Trace("Shellbar finished")
 
 }

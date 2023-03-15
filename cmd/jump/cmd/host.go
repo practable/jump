@@ -35,7 +35,7 @@ var hostCmd = &cobra.Command{
 	Short: "jump host connects a local jump login service to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
 export JUMP_HOST_LOCAL_PORT=22
-export JUMP_HOST_ACCESS=https://access.example.io/jump/abc123
+export JUMP_HOST_ACCESS=https://access.example.io/jump/shell/abc123
 export JUMP_HOST_TOKEN=ey...<snip>
 export JUMP_HOST_DEVELOPMENT=true
 jump host

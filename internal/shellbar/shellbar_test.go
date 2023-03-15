@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"net/http"
 	"os"
 	"reflect"
 	"strconv"
@@ -27,8 +29,10 @@ import (
 // NOTE don't use reconws.Reconnect for production clients anymore;
 // it does NOT understand the use of auth codes
 // use Dial instead.
+var debug bool
+
 func init() {
-	debug := false
+	debug = false
 	if debug {
 		log.SetReportCaller(true)
 		log.SetLevel(log.TraceLevel)
@@ -52,7 +56,8 @@ func MakeTestToken(audience, connectionType, topic string, scopes []string, life
 
 func TestShellbar(t *testing.T) {
 
-	// Setup logging
+	// Renew the mux to avoid multiple registrations error
+	http.DefaultServeMux = new(http.ServeMux)
 
 	// setup shellbar on local (free) port
 	closed := make(chan struct{})
@@ -405,7 +410,11 @@ func TestShellbar(t *testing.T) {
 	// Teardown crossbar
 	time.Sleep(timeout)
 	close(closed)
+	if debug {
+		t.Log("waiting")
+	}
 	wg.Wait()
+	time.Sleep(timeout)
 
 }
 
@@ -417,4 +426,344 @@ func pretty(t interface{}) string {
 	}
 
 	return string(json)
+}
+
+func TestPacketBoundariesSynchronous(t *testing.T) {
+
+	// A client sends large messages to host, or vice versa.
+	// Each one waits for the other to receive before sending another
+	// this is not a realistic test because we can only coordinate this
+	// co-operative behaviour when we control both host and client from
+	// the same test script. But it is a useful baseline test that
+	// messages are not broken up or merged in the hub
+
+	// Renew the mux to avoid multiple registrations error
+	http.DefaultServeMux = new(http.ServeMux)
+
+	timeout := time.Duration(100 * time.Millisecond)
+	// setup shellbar on local (free) port
+	closed := make(chan struct{})
+	var wg sync.WaitGroup
+
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	audience := "ws://127.0.0.1:" + strconv.Itoa(port)
+	secret := "somesecret"
+	cs := ttlcode.NewDefaultCodeStore()
+	config := Config{
+		Listen:     port,
+		Audience:   audience,
+		CodeStore:  cs,
+		Secret:     secret,
+		StatsEvery: time.Second,
+	}
+
+	wg.Add(1)
+	go Shellbar(closed, &wg, config)
+	// safety margin to get shellbar running
+	time.Sleep(time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// construct host token & connect
+	ct := "shell"
+	session := "rst"
+	scopes := []string{"read", "write"} //host, client scopes are known only to access
+
+	tokenHost := MakeTestToken(audience, ct, session, scopes, 30)
+	codeHost := cs.SubmitToken(tokenHost)
+
+	hh := reconws.New()
+	go func() {
+		err := hh.Dial(ctx, audience+"/"+ct+"/"+session+"?code="+codeHost)
+		assert.NoError(t, err)
+	}()
+
+	// ensure host connects first by pausing until a dummy message sends
+	//  not needed in production - shellbar would be alive long before a client connects
+
+	hh.Out <- reconws.WsMessage{Type: websocket.BinaryMessage}
+
+	// construct client token & connect
+	connectionID := "uvw"
+	clientTopic := session + "/" + connectionID
+	topicSalt := "xyz"
+	tokenClient := MakeTestToken(audience, ct, clientTopic, scopes, 30)
+	permission.SetTopicSalt(&tokenClient, topicSalt)
+	permission.SetAlertHost(&tokenClient, true)
+
+	codeClient := cs.SubmitToken(tokenClient)
+	c := reconws.New()
+	clientUniqueURI := audience + "/" + ct + "/" + clientTopic
+	curi := clientUniqueURI + "?code=" + codeClient
+	go func() {
+		err := c.Dial(ctx, curi)
+		assert.NoError(t, err)
+	}()
+
+	time.Sleep(timeout)
+
+	var ca ConnectionAction
+
+	select {
+	case msg, ok := <-hh.In:
+		assert.True(t, ok)
+		err = json.Unmarshal(msg.Data, &ca)
+		assert.NoError(t, err)
+		assert.Equal(t, "connect", ca.Action)
+		if debug {
+			t.Log(ca)
+		}
+	case <-time.After(timeout):
+		t.Error("connection timed out")
+	}
+
+	// host now connects with the new client
+	h := reconws.New()
+	go func() {
+		err := h.Dial(ctx, ca.URI)
+		assert.NoError(t, err)
+	}()
+
+	// pause until host is connected
+	h.Out <- reconws.WsMessage{Type: websocket.BinaryMessage}
+
+	// drain dummy message
+	<-c.In
+
+	rand.Seed(time.Now().UnixNano())
+
+	timeout = time.Duration(time.Second)
+
+	var repeats = 100
+
+	if testing.Short() {
+		t.Log("short test so reducing repeats from 100 to 2")
+		repeats = 2
+	}
+
+	sizes := []int{999, 999999, 9999999} //kB,MB,10MB
+	for i := 1; i < repeats; i++ {
+		for _, size := range sizes {
+
+			data := make([]byte, size)
+			_, err = rand.Read(data)
+			assert.NoError(t, err) //never errors according to package documentation
+
+			select {
+			case <-time.After(timeout):
+				t.Errorf("sending timed out for %d", size)
+			case c.Out <- reconws.WsMessage{Data: data, Type: websocket.BinaryMessage}:
+				if debug {
+					t.Logf("sent %d-th iteration of size %d", i, size)
+				}
+			}
+
+			select {
+			case msg, ok := <-h.In:
+				assert.True(t, ok)
+				if size != len(msg.Data) {
+					t.Errorf("failed for %d-th iteration of size %d with %d", i, size, len(msg.Data))
+				}
+			case <-time.After(timeout):
+				t.Errorf("reception timed out for %d-th iteration of size %d", i, size)
+			}
+		}
+	}
+
+	// let tests finish before concelling the clients
+	time.Sleep(timeout)
+	cancel()
+	// Teardown crossbar
+	time.Sleep(timeout)
+	close(closed)
+
+	// TODO investigate failure to shut down?
+	t.Log("waiting")
+	wg.Wait()
+
+}
+
+func TestPacketBoundariesAsynchronous(t *testing.T) {
+
+	// A client sends large messages to host, or vice versa.
+	// Messages are sent and received in separate goroutines
+	// so any splitting or combinations of messages that might
+	// occur in the hub (separate issue to clients chunking messages)
+	// should show up in this test.
+
+	// Renew the mux to avoid multiple registrations error
+	http.DefaultServeMux = new(http.ServeMux)
+
+	timeout := time.Duration(100 * time.Millisecond)
+	// setup shellbar on local (free) port
+	closed := make(chan struct{})
+	var wg sync.WaitGroup
+
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	audience := "ws://127.0.0.1:" + strconv.Itoa(port)
+	secret := "somesecret"
+	cs := ttlcode.NewDefaultCodeStore()
+	config := Config{
+		Listen:     port,
+		Audience:   audience,
+		CodeStore:  cs,
+		Secret:     secret,
+		StatsEvery: time.Second,
+	}
+
+	wg.Add(1)
+	go Shellbar(closed, &wg, config)
+	// safety margin to get shellbar running
+	time.Sleep(time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// construct host token & connect
+	ct := "shell"
+	session := "rst"
+	scopes := []string{"read", "write"} //host, client scopes are known only to access
+
+	tokenHost := MakeTestToken(audience, ct, session, scopes, 30)
+	codeHost := cs.SubmitToken(tokenHost)
+
+	hh := reconws.New()
+	go func() {
+		err := hh.Dial(ctx, audience+"/"+ct+"/"+session+"?code="+codeHost)
+		assert.NoError(t, err)
+	}()
+
+	// ensure host connects first by pausing until a dummy message sends
+	//  not needed in production - shellbar would be alive long before a client connects
+
+	hh.Out <- reconws.WsMessage{Type: websocket.BinaryMessage}
+
+	// construct client token & connect
+	connectionID := "uvw"
+	clientTopic := session + "/" + connectionID
+	topicSalt := "xyz"
+	tokenClient := MakeTestToken(audience, ct, clientTopic, scopes, 30)
+	permission.SetTopicSalt(&tokenClient, topicSalt)
+	permission.SetAlertHost(&tokenClient, true)
+
+	codeClient := cs.SubmitToken(tokenClient)
+	c := reconws.New()
+	clientUniqueURI := audience + "/" + ct + "/" + clientTopic
+	curi := clientUniqueURI + "?code=" + codeClient
+	go func() {
+		err := c.Dial(ctx, curi)
+		assert.NoError(t, err)
+	}()
+
+	time.Sleep(timeout)
+
+	var ca ConnectionAction
+
+	select {
+	case msg, ok := <-hh.In:
+		assert.True(t, ok)
+		err = json.Unmarshal(msg.Data, &ca)
+		assert.NoError(t, err)
+		assert.Equal(t, "connect", ca.Action)
+		if debug {
+			t.Log(ca)
+		}
+	case <-time.After(timeout):
+		t.Error("connection timed out")
+	}
+
+	// host now connects with the new client
+	h := reconws.New()
+	go func() {
+		err := h.Dial(ctx, ca.URI)
+		assert.NoError(t, err)
+	}()
+
+	// pause until host is connected
+	h.Out <- reconws.WsMessage{Type: websocket.BinaryMessage}
+
+	// drain dummy message
+	<-c.In
+
+	time.Sleep(timeout)
+
+	rand.Seed(time.Now().UnixNano())
+
+	timeout = time.Duration(time.Second)
+
+	var repeats = 100
+
+	if testing.Short() {
+		t.Log("short test so reducing repeats from 100 to 2")
+		repeats = 2
+	}
+
+	sizes := []int{9, 99, 999, 9999} //try smaller messages
+
+	sent := make(chan struct{})
+	received := make(chan struct{})
+	go func() {
+		for i := 1; i < repeats; i++ {
+			for _, size := range sizes {
+				select {
+				case msg, ok := <-h.In:
+					assert.True(t, ok)
+					if debug {
+						t.Logf("rcvd %d-th iteration of size %d", i, size)
+					}
+					if size != len(msg.Data) {
+						t.Errorf("failed for %d-th iteration of size %d with %d", i, size, len(msg.Data))
+					}
+				case <-time.After(timeout):
+					t.Errorf("reception timed out for %d-th iteration of size %d", i, size)
+				}
+			}
+		}
+		close(received)
+	}()
+
+	go func() {
+		for i := 1; i < repeats; i++ {
+
+			for _, size := range sizes {
+
+				// this test fails if the rate increases by setting time.Sleep(time.Millisecond)
+				time.Sleep(10 * time.Millisecond) // yield to receive routine by sleeping briefly
+
+				data := make([]byte, size)
+				_, err = rand.Read(data)
+				assert.NoError(t, err) //never errors according to package documentation
+
+				select {
+				case <-time.After(timeout):
+					t.Errorf("sending timed out for %d", size)
+				case c.Out <- reconws.WsMessage{Data: data, Type: websocket.BinaryMessage}:
+					if debug {
+						t.Logf("sent %d-th iteration of size %d", i, size)
+					}
+				}
+			}
+		}
+		close(sent)
+	}()
+
+	<-sent     //wait for sending to finish
+	<-received //wait for receive to finish
+
+	cancel()
+	// Teardown crossbar
+	time.Sleep(timeout)
+	close(closed)
+
+	// TODO investigate failure to shut down?
+	t.Log("waiting")
+	wg.Wait()
+
 }

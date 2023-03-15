@@ -34,24 +34,24 @@ import (
 
 // relayCmd represents the relay command
 var relayCmd = &cobra.Command{
-	Use:   "jump",
+	Use:   "relay",
 	Short: "jump relay connects jump clients to jump hosts",
 	Long: `Set the operating paramters with environment variables, for example
 
 
-export JUMP_AUDIENCE=https://example.org
-export JUMP_BUFFER_SIZE=128
-export JUMP_LOG_LEVEL=warn
-export JUMP_LOG_FORMAT=json
-export JUMP_LOG_FILE=/var/log/relay/relay.log
-export JUMP_PORT_ACCESS=3000
-export JUMP_PORT_PROFILE=6061
-export JUMP_PORT_RELAY=3001
-export JUMP_PROFILE=true
-export JUMP_SECRET=somesecret
-export JUMP_STATS_EVERY=5s
-export JUMP_TIDY_EVERY=5m 
-export JUMP_URL=wss://example.io/relay 
+export JUMP_RELAY_AUDIENCE=https://example.org
+export JUMP_RELAY_BUFFER_SIZE=128
+export JUMP_RELAY_LOG_LEVEL=warn
+export JUMP_RELAY_LOG_FORMAT=json
+export JUMP_RELAY_LOG_FILE=/var/log/jump/jump.log
+export JUMP_RELAY_PORT_ACCESS=3000
+export JUMP_RELAY_PORT_PROFILE=6061
+export JUMP_RELAY_PORT_RELAY=3001
+export JUMP_RELAY_PROFILE=true
+export JUMP_RELAY_SECRET=somesecret
+export JUMP_RELAY_STATS_EVERY=5s
+export JUMP_RELAY_TIDY_EVERY=5m 
+export JUMP_RELAY_URL=wss://example.io/relay 
 jump relay
 
 It is expected that you will reverse proxy incoming connections (e.g. with nginx or apache). 
@@ -68,7 +68,7 @@ websocket connections are reverse proxied to the correct instance).
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("JUMP")
+		viper.SetEnvPrefix("JUMP_RELAY")
 		viper.AutomaticEnv()
 
 		viper.SetDefault("audience", "") //"" so we can check it's been provided

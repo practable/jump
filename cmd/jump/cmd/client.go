@@ -33,21 +33,21 @@ var clientCmd = &cobra.Command{
 	Use:   "client",
 	Short: "jump client forwards local jump logins to jump relay",
 	Long: `Set the operating paramters with environment variables, for example
-export JUMPCLIENT_LOCALPORT=22
-export JUMPCLIENT_RELAYSESSION=https://access.example.io/jump/abc123
-export JUMPCLIENT_TOKEN=ey...<snip>
-export JUMPCLIENT_DEVELOPMENT=true
+export JUMP_CLIENT_LOCAL_PORT=22
+export JUMP_CLIENT_RELAY_SESSION=https://access.example.io/jump/abc123
+export JUMP_CLIENT_TOKEN=ey...<snip>
+export JUMP_CLIENT_DEVELOPMENT=true
 jump client
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("JUMPCLIENT")
+		viper.SetEnvPrefix("JUMP_CLIENT")
 		viper.AutomaticEnv()
 
-		viper.SetDefault("localport", 8082)
-		localPort := viper.GetInt("localport")
+		viper.SetDefault("local_port", 8082)
+		localPort := viper.GetInt("local_port")
 
-		relaySession := viper.GetString("relaysession")
+		relaySession := viper.GetString("relay_session")
 
 		token := viper.GetString("token")
 
@@ -72,11 +72,11 @@ jump client
 		// check inputs
 
 		if relaySession == "" {
-			fmt.Println("JUMPCLIENT_RELAYSESSION not set")
+			fmt.Println("JUMP_CLIENT_RELAYSESSION not set")
 			os.Exit(1)
 		}
 		if token == "" {
-			fmt.Println("JUMPCLIENT_TOKEN not set")
+			fmt.Println("JUMP_CLIENT_TOKEN not set")
 			os.Exit(1)
 		}
 
