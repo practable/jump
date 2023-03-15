@@ -68,8 +68,13 @@ func (p *Pipe) Run(ctx context.Context) {
 	<-ctx.Done()
 
 }
-
 func (p *Pipe) RunPacket(ctx context.Context) {
+
+	fmt.Print("NOT IMPLEMENTED")
+
+}
+
+func (p *Pipe) RunCopy(ctx context.Context) {
 
 	listenURL := ":" + strconv.Itoa(p.Listen)
 	targetURL := "localhost:" + strconv.Itoa(p.Target)
@@ -104,19 +109,7 @@ func (p *Pipe) RunPacket(ctx context.Context) {
 
 }
 
-/* HANDLERS FOR PACKET METHOD */
-
-func packetListen(ctx context.Context, URL string, left, right chan []byte) {
-	log.Error("packetListen not implemented")
-	<-ctx.Done()
-}
-
-func packetTarget(ctx context.Context, URL string, left, right chan []byte) {
-	log.Error("packetTarget not implemented")
-	<-ctx.Done()
-}
-
-/*  HANDLERS FOR ORIGINAL METHOD  */
+/*  HANDLERS FOR RUN (original method)  */
 
 // listenHandler handles the external client
 // it receives data from the external connection and forwards it internally over channel left
