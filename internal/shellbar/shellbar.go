@@ -805,16 +805,6 @@ func statsClient(ctx context.Context, config Config) {
 	}
 }
 
-func filterClients(clients []clientDetails, filter clientDetails) []clientDetails {
-	filteredClients := clients[:0]
-	for _, client := range clients {
-		if client.name != filter.name {
-			filteredClients = append(filteredClients, client)
-		}
-	}
-	return filteredClients
-}
-
 // slashify is used in serveWS
 func slashify(path string) string {
 
