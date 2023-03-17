@@ -38,76 +38,6 @@ const (
 	maxMessageSize = 0xffff
 )
 
-// When transferring files, messages are typically at max size
-// So we can save some syscalls if we can fit them into the buffer
-// null subprotocol required by Chrome
-// TODO restrict CheckOrigin as required
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  maxMessageSize,
-	WriteBufferSize: maxMessageSize,
-	Subprotocols:    []string{"null"},
-	CheckOrigin:     func(r *http.Request) bool { return true },
-}
-
-//Config represents the configuration of a shellbar
-type Config struct {
-
-	// Audience must match the host in token
-	Audience string
-
-	// BufferSize is the channel buffer size for clients
-	BufferSize int64
-
-	// hub is a pointer to the messaging hub (private)
-	hub *Hub
-
-	// ExchangeCode swaps a code for the associated Token
-	CodeStore *ttlcode.CodeStore
-
-	// Listen is the listening port
-	Listen int
-
-	// Secret is used to validating statsTokens
-	Secret string
-
-	//StatsEvery controls how often to send stats reports
-	StatsEvery time.Duration
-}
-
-// NewDefaultConfig returns a pointer to a new, default, Config
-func NewDefaultConfig() *Config {
-	c := &Config{}
-	c.Listen = 3000
-	c.CodeStore = ttlcode.NewDefaultCodeStore()
-	return c
-}
-
-// WithListen sets the listening port in the Config
-func (c *Config) WithListen(listen int) *Config {
-	c.Listen = listen
-	return c
-}
-
-// WithAudience sets the audience in the Config
-func (c *Config) WithAudience(audience string) *Config {
-	c.Audience = audience
-	return c
-}
-
-// WithCodeStoreTTL sets the TTL of the codestore
-func (c *Config) WithCodeStoreTTL(ttl int64) *Config {
-	c.CodeStore = ttlcode.NewDefaultCodeStore().
-		WithTTL(ttl)
-	return c
-}
-
-// ConnectionAction represents an action happening on a  connection
-type ConnectionAction struct {
-	Action string `json:"action"`
-	URI    string `json:"uri"`
-	UUID   string `json:"uuid"`
-}
-
 // Client is a middleperson between the websocket connection and the hub.
 type Client struct {
 	hub *Hub
@@ -153,6 +83,62 @@ type Client struct {
 
 	// closed once we've received something, or immediately if !mustWaitToSend
 	clearToSend chan struct{}
+}
+
+type clientDetails struct {
+	name         string
+	topic        string
+	messagesChan chan message
+}
+
+//Config represents the configuration of a shellbar
+type Config struct {
+
+	// Audience must match the host in token
+	Audience string
+
+	// BufferSize is the channel buffer size for clients
+	BufferSize int64
+
+	// hub is a pointer to the messaging hub (private)
+	hub *Hub
+
+	// ExchangeCode swaps a code for the associated Token
+	CodeStore *ttlcode.CodeStore
+
+	// Listen is the listening port
+	Listen int
+
+	// Secret is used to validating statsTokens
+	Secret string
+
+	//StatsEvery controls how often to send stats reports
+	StatsEvery time.Duration
+}
+
+// ConnectionAction represents an action happening on a  connection
+type ConnectionAction struct {
+	Action string `json:"action"`
+	URI    string `json:"uri"`
+	UUID   string `json:"uuid"`
+}
+
+// Hub maintains the set of active clients and broadcasts messages to the
+// clients.
+type Hub struct {
+	// Registered clients.
+	clients map[string]map[*Client]bool
+
+	mu *sync.RWMutex
+
+	// Inbound messages from the clients.
+	broadcast chan message
+
+	// Register requests from the clients.
+	register chan *Client
+
+	// Unregister requests from clients.
+	unregister chan *Client
 }
 
 // RxTx represents statistics for both receive and transmit
@@ -203,30 +189,20 @@ type message struct {
 	data   []byte //text data are converted to/from bytes as needed
 }
 
-type clientDetails struct {
-	name         string
-	topic        string
-	messagesChan chan message
-}
-
-// requests to add or delete subscribers are represented by this struct
-type clientAction struct {
-	action clientActionType
-	client clientDetails
-}
-
-// userActionType represents the type of of action requested
-type clientActionType int
-
-// clientActionType constants
-const (
-	clientAdd clientActionType = iota
-	clientDelete
-)
-
 type topicDirectory struct {
 	sync.Mutex
 	directory map[string][]clientDetails
+}
+
+// When transferring files, messages are typically at max size
+// So we can save some syscalls if we can fit them into the buffer
+// null subprotocol required by Chrome
+// TODO restrict CheckOrigin as required
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  maxMessageSize,
+	WriteBufferSize: maxMessageSize,
+	Subprotocols:    []string{"null"},
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 // Shellbar runs ssh relay with the given configuration
@@ -265,22 +241,31 @@ func Shellbar(ctx context.Context, config Config) {
 	log.Trace("handleConnections is done")
 }
 
-// Hub maintains the set of active clients and broadcasts messages to the
-// clients.
-type Hub struct {
-	// Registered clients.
-	clients map[string]map[*Client]bool
+// NewDefaultConfig returns a pointer to a new, default, Config
+func NewDefaultConfig() *Config {
+	c := &Config{}
+	c.Listen = 3000
+	c.CodeStore = ttlcode.NewDefaultCodeStore()
+	return c
+}
 
-	mu *sync.RWMutex
+// WithListen sets the listening port in the Config
+func (c *Config) WithListen(listen int) *Config {
+	c.Listen = listen
+	return c
+}
 
-	// Inbound messages from the clients.
-	broadcast chan message
+// WithAudience sets the audience in the Config
+func (c *Config) WithAudience(audience string) *Config {
+	c.Audience = audience
+	return c
+}
 
-	// Register requests from the clients.
-	register chan *Client
-
-	// Unregister requests from clients.
-	unregister chan *Client
+// WithCodeStoreTTL sets the TTL of the codestore
+func (c *Config) WithCodeStoreTTL(ttl int64) *Config {
+	c.CodeStore = ttlcode.NewDefaultCodeStore().
+		WithTTL(ttl)
+	return c
 }
 
 func newHub() *Hub {
