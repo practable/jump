@@ -231,8 +231,6 @@ func Shellbar(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
 
 	var wg sync.WaitGroup
 
-	messagesToDistribute := make(chan message, config.BufferSize) //TODO make buffer length separately configurable from incoming buffer size
-
 	var topics topicDirectory
 
 	topics.directory = make(map[string][]clientDetails)
@@ -241,7 +239,7 @@ func Shellbar(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
 
 	wg.Add(2)
 
-	go handleConnections(closed, &wg, clientActionsChan, messagesToDistribute, config)
+	go handleConnections(closed, &wg, config)
 
 	go handleClients(closed, &wg, &topics, clientActionsChan)
 
@@ -257,7 +255,7 @@ func fpsFromNs(ns float64) float64 {
 	return 1 / (ns * 1e-9)
 }
 
-func handleConnections(closed <-chan struct{}, parentwg *sync.WaitGroup, clientActionsChan chan clientAction, messagesFromMe chan message, config Config) {
+func handleConnections(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
 	hub := newHub()
 	go hub.run()
 
