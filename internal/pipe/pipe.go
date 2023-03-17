@@ -24,6 +24,7 @@ import (
 	"github.com/practable/jump/internal/chanio"
 	"github.com/practable/jump/internal/tcpconnect"
 	"github.com/practable/jump/internal/ws"
+	"github.com/practable/jump/internal/wschan"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -73,7 +74,61 @@ func (p *Pipe) Run(ctx context.Context) {
 }
 
 func (p *Pipe) RunDevelop(ctx context.Context) {
-	p.RunWS(ctx)
+	p.RunWSChan(ctx)
+}
+
+/*
+                               using freeport0                                using freeport1
+                               wsPort0               wsURL0                  wsPort1                wsURL1
+          |--------|          |--------|             |--------|              |--------|             |--------|           |--------|
+          \ tcp    \  ---->   \ ws     \             \ ws     \  ----a--->   \ ws     \             \ ws     \  ---->    \ tcp    \
+ Target   | target | io.Copy  | host   |  websocket  | client |   channels   | host   |  websocket  | client | io.Copy   | client |  Listen
+ Port     \        \  <----   \        \   <--->     \        \              \        \   <--->     \        \  <-----   \        \  Port
+          |--------|          |--------|             |--------|  <---b-----  |--------|             |--------|           |--------|
+
+ Part    |<---------- A ------------------>|<------B--------------->|<--------C----------->|<------------------D---------------->|
+
+This can also relay large binary files without error, so the websocket to channel implementation here is ok
+This is different to approach taken in the existing shellbar hub, so that needs testing/revising
+
+*/
+func (p *Pipe) RunWSChan(ctx context.Context) {
+	log.Info("WSChan Version")
+
+	targetURL := "localhost:" + strconv.Itoa(p.Target)
+
+	wsPort0, err := freeport.GetFreePort()
+	if err != nil {
+		return
+	}
+	wsURL0 := "ws://localhost:" + strconv.Itoa(wsPort0)
+
+	wsPort1, err := freeport.GetFreePort()
+	if err != nil {
+		return
+	}
+	wsURL1 := "ws://localhost:" + strconv.Itoa(wsPort1)
+
+	a := make(chan []byte, 1)
+	b := make(chan []byte, 1)
+
+	// Part A
+	go ws.Host(ctx, wsPort0, targetURL)
+
+	// PartC
+	go wschan.Host(ctx, wsPort1, b, a) //swap channel order to let part B and part C communicate
+
+	// Part D
+	go ws.Client(ctx, p.Listen, wsURL1)
+
+	// let servers start, then ensure we capture the first packet from target port and send it all the way back to the client port
+	time.Sleep(time.Second)
+
+	// PartB
+	go wschan.Client(ctx, wsURL0, a, b)
+
+	<-ctx.Done()
+
 }
 
 /*
@@ -83,6 +138,8 @@ func (p *Pipe) RunDevelop(ctx context.Context) {
  Target   | target | io.Copy  | host   |  websocket  | client | io.Copy   | client |  Listen
  Port     \        \  <----   \        \   <--->     \        \  <-----   \        \  Port
           |--------|          |--------|             |--------|           |--------|
+
+This works with simultaneous connections, even streaming large binary files at the same time
 */
 func (p *Pipe) RunWS(ctx context.Context) {
 	log.Info("WS Version")
@@ -124,7 +181,7 @@ func (p *Pipe) RunChannel(ctx context.Context) {
 		log.Errorf("could not start server on %s: %v", listenURL, err)
 	}
 
-	log.Info("server running on %s\n", listenURL)
+	log.Infof("server running on %s\n", listenURL)
 
 	//https://www.zupzup.org/go-port-forwarding/index.html
 	client, err := incoming.Accept()

@@ -81,7 +81,9 @@ func Client(ctx context.Context, listen int, target string) {
 
 func Host(ctx context.Context, listen int, target string) {
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	server := http.NewServeMux()
+
+	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 		wconn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -103,7 +105,7 @@ func Host(ctx context.Context, listen int, target string) {
 
 	addr := ":" + strconv.Itoa(listen)
 
-	h := &http.Server{Addr: addr, Handler: nil}
+	h := &http.Server{Addr: addr, Handler: server}
 
 	go func() {
 		if err := h.ListenAndServe(); err != nil {
@@ -170,7 +172,7 @@ func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.
 				return nil
 			}()
 			if err != nil {
-				log.WithField("error", err.Error).Error("internal/ws.Host(ws->tcp)")
+				log.WithField("err", err.Error).Error("internal/ws.Host(ws->tcp)")
 				return
 			}
 		}
@@ -202,7 +204,7 @@ func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.
 			}()
 
 			if err != nil {
-				log.WithField("error", err.Error).Error("internal/ws.Host(tcp->ws) error")
+				log.WithField("err", err.Error).Error("internal/ws.Host(tcp->ws) error")
 				return
 			}
 		}
