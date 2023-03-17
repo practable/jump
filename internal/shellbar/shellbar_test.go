@@ -12,7 +12,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -61,8 +60,6 @@ func TestShellbar(t *testing.T) {
 	http.DefaultServeMux = new(http.ServeMux)
 
 	// setup shellbar on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
 
 	port, err := freeport.GetFreePort()
 	if err != nil {
@@ -80,8 +77,8 @@ func TestShellbar(t *testing.T) {
 		StatsEvery: time.Second,
 	}
 
-	wg.Add(1)
-	go Shellbar(closed, &wg, config)
+	ctx, cancel := context.WithCancel(context.Background())
+	go Shellbar(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
 
@@ -90,8 +87,6 @@ func TestShellbar(t *testing.T) {
 	// Start tests
 
 	// *** TestConnectUniquely ***
-
-	ctx, cancel := context.WithCancel(context.Background())
 
 	// construct host token & connect
 	ct := "shell"
@@ -408,15 +403,6 @@ func TestShellbar(t *testing.T) {
 	// let tests finish before concelling the clients
 	time.Sleep(timeout)
 	cancel()
-	// Teardown crossbar
-	time.Sleep(timeout)
-	close(closed)
-	if debug {
-		t.Log("waiting")
-	}
-	wg.Wait()
-	time.Sleep(timeout)
-
 }
 
 func pretty(t interface{}) string {
@@ -443,9 +429,6 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 
 	timeout := time.Duration(100 * time.Millisecond)
 	// setup shellbar on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		log.Fatal(err)
@@ -462,12 +445,10 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 		StatsEvery: time.Second,
 	}
 
-	wg.Add(1)
-	go Shellbar(closed, &wg, config)
+	ctx, cancel := context.WithCancel(context.Background())
+	go Shellbar(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
-
-	ctx, cancel := context.WithCancel(context.Background())
 
 	// construct host token & connect
 	ct := "shell"
@@ -575,17 +556,9 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 		}
 	}
 
-	// let tests finish before concelling the clients
+	// let tests finish before concelling
 	time.Sleep(timeout)
 	cancel()
-	// Teardown crossbar
-	time.Sleep(timeout)
-	close(closed)
-
-	// TODO investigate failure to shut down?
-	t.Log("waiting")
-	wg.Wait()
-
 }
 
 func testPacketBoundariesAsynchronous(t *testing.T) {
@@ -601,9 +574,6 @@ func testPacketBoundariesAsynchronous(t *testing.T) {
 
 	timeout := time.Duration(100 * time.Millisecond)
 	// setup shellbar on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		log.Fatal(err)
@@ -620,12 +590,11 @@ func testPacketBoundariesAsynchronous(t *testing.T) {
 		StatsEvery: time.Second,
 	}
 
-	wg.Add(1)
-	go Shellbar(closed, &wg, config)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go Shellbar(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
-
-	ctx, cancel := context.WithCancel(context.Background())
 
 	// construct host token & connect
 	ct := "shell"
@@ -759,14 +728,6 @@ func testPacketBoundariesAsynchronous(t *testing.T) {
 	<-received //wait for receive to finish
 
 	cancel()
-	// Teardown crossbar
-	time.Sleep(timeout)
-	close(closed)
-
-	// TODO investigate failure to shut down?
-	t.Log("waiting")
-	wg.Wait()
-
 }
 
 func randomClient() clientDetails {

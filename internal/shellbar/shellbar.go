@@ -58,6 +58,9 @@ type Config struct {
 	// BufferSize is the channel buffer size for clients
 	BufferSize int64
 
+	// hub is a pointer to the messaging hub (private)
+	hub *Hub
+
 	// ExchangeCode swaps a code for the associated Token
 	CodeStore *ttlcode.CodeStore
 
@@ -227,46 +230,22 @@ type topicDirectory struct {
 }
 
 // Shellbar runs ssh relay with the given configuration
-func Shellbar(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
+func Shellbar(ctx context.Context, config Config) {
 
-	var wg sync.WaitGroup
-
-	var topics topicDirectory
-
-	topics.directory = make(map[string][]clientDetails)
-
-	wg.Add(1)
-
-	go handleConnections(closed, &wg, config)
-
-	wg.Wait()
-
-	parentwg.Done()
-
-	log.Trace("Shellbar finished")
-
-}
-
-func fpsFromNs(ns float64) float64 {
-	return 1 / (ns * 1e-9)
-}
-
-func handleConnections(closed <-chan struct{}, parentwg *sync.WaitGroup, config Config) {
 	hub := newHub()
-	go hub.run()
+	config.hub = hub //needed by serveWS and statsClient
+	go hub.run(ctx)
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(closed, hub, w, r, config)
+	server := http.NewServeMux() //avoid multiple registrations in test code
+	server.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		serveWS(ctx, config, w, r)
 	})
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go statsClient(closed, &wg, hub, config)
+	go statsClient(ctx, config)
 
 	addr := ":" + strconv.Itoa(config.Listen)
 
-	h := &http.Server{Addr: addr, Handler: nil}
+	h := &http.Server{Addr: addr, Handler: server}
 
 	go func() {
 		if err := h.ListenAndServe(); err != nil {
@@ -274,16 +253,15 @@ func handleConnections(closed <-chan struct{}, parentwg *sync.WaitGroup, config 
 		}
 	}()
 
-	<-closed
+	<-ctx.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := h.Shutdown(ctx)
+	err := h.Shutdown(sctx) //ungraceful because cannot shut ws connections - TODO signal them separately
 	if err != nil {
 		log.Infof("ListenAndServe.Shutdown(): %s", err.Error())
 	}
-	wg.Wait()
-	parentwg.Done()
+	<-sctx.Done()
 	log.Trace("handleConnections is done")
 }
 
@@ -315,9 +293,11 @@ func newHub() *Hub {
 	}
 }
 
-func (h *Hub) run() {
+func (h *Hub) run(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case client := <-h.register:
 			h.mu.Lock()
 			if _, ok := h.clients[client.topic]; !ok {
@@ -443,7 +423,9 @@ func (c *Client) readPump() {
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-func (c *Client) writePump(closed <-chan struct{}, cancelled <-chan struct{}) {
+func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
+
+	defer cancel()
 
 	id := "shellbar.writePump(" + c.topic + "/" + c.name + ")"
 
@@ -521,14 +503,12 @@ func (c *Client) writePump(closed <-chan struct{}, cancelled <-chan struct{}) {
 				log.Warnf("%s: done because conn error %s", id, err.Error())
 				return
 			}
-		case <-closed:
-			log.Tracef("%s: done because closed channel closed", id)
-			return
-		case <-cancelled:
-			log.Tracef("%s: done because cancelled channel closed", id)
+		case <-ctx.Done():
+			log.Tracef("%s: context done", id)
 			return
 		}
 	}
+
 }
 
 // ConnectionType represents whether the connection is for Session, Shell or Unsupported
@@ -541,8 +521,8 @@ const (
 	Unsupported
 )
 
-// serveWs handles websocket requests from clients.
-func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Request, config Config) {
+// serveWS handles websocket requests from clients.
+func serveWS(ctx context.Context, config Config, w http.ResponseWriter, r *http.Request) {
 
 	id := "shellbar.serveWs(" + uuid.New().String()[0:6] + ")"
 
@@ -649,19 +629,14 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	cancelled := make(chan struct{})
-
-	// cancel the connection when the token has expired
-	go func() {
-		time.Sleep(time.Duration(ttl) * time.Second)
-		close(cancelled)
-	}()
+	//cancel the connection when the token has expired
+	cctx, cancel := context.WithTimeout(ctx, time.Duration(ttl)*time.Second)
 
 	if ct == Shell {
 		// initialise statistics
 		stats := &stats{mu: &sync.RWMutex{}} //Leave last at default value
 
-		client := &Client{hub: hub,
+		client := &Client{hub: config.hub,
 			audience:       config.Audience,
 			canRead:        canRead,
 			canWrite:       canWrite,
@@ -682,7 +657,7 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 
 		log.WithField("Topic", client.topic).Tracef("%s: registering client at topic %s with name %s", id, client.topic, client.name)
 
-		go client.writePump(closed, cancelled)
+		go client.writePump(cctx, cancel) //context will timeout when the token has expired
 		go client.readPump()
 
 		log.WithField("topic", topic+token.TopicSalt).Tracef("%s: started shellrelay client on topic %s", id, topic+token.TopicSalt)
@@ -706,8 +681,8 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 			}
 
 			// same URL as client used, but different code (and leave out the salt)
-			// note the token could have multiple audiences, whereas we are checking validity against
-			// only one audience, the config audience, so use that to generate our URI
+			// use the config.Audience to generate our URI because the token might have
+			// multiple audiences, whereas this connection must be made here to the config.Audience
 			hostAlertURI := config.Audience + "/" + token.ConnectionType + "/" + token.Topic + "?code=" + code
 			ca := ConnectionAction{
 				Action: "connect",
@@ -722,22 +697,24 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 				return
 			}
 
-			hub.broadcast <- message{sender: *adminClient, data: camsg, mt: websocket.TextMessage}
+			config.hub.broadcast <- message{sender: *adminClient, data: camsg, mt: websocket.TextMessage}
 			log.WithFields(log.Fields{"uuid": client.hostAlertUUID, "uri": hostAlertURI, "code": code}).Debugf("%s: sent host CONNECT for topic %s with UUID:%s at URI:%s", id, topic, client.hostAlertUUID, hostAlertURI)
 
 		}
 
 		return
+	} else {
+		cancel() //don't leak the context resources
 	}
 
 }
 
 // StatsClient starts a routine which sends stats reports on demand.
-func statsClient(closed <-chan struct{}, wg *sync.WaitGroup, hub *Hub, config Config) {
+func statsClient(ctx context.Context, config Config) {
 
 	stats := &stats{mu: &sync.RWMutex{}}
 
-	client := &Client{hub: hub,
+	c := &Client{hub: config.hub,
 		connectedAt: time.Now(),
 		send:        make(chan message, 256),
 		topic:       "stats",
@@ -749,23 +726,15 @@ func statsClient(closed <-chan struct{}, wg *sync.WaitGroup, hub *Hub, config Co
 		canRead:     true,
 		canWrite:    true,
 	}
-	client.hub.register <- client
 
-	go client.statsReporter(closed, wg, config)
-
-}
-
-// StatsReporter sends a stats update in response to {"cmd":"update"}.
-func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup, config Config) {
-
-	defer wg.Done()
+	config.hub.register <- c
 
 	var sc StatsCommand
 
 	for {
 
 		select {
-		case <-closed:
+		case <-ctx.Done():
 			log.Trace("StatsReporter closed")
 			return
 		case msg, ok := <-c.send: // received a message from hub
