@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
 	"github.com/practable/jump/internal/permission"
@@ -428,7 +429,7 @@ func pretty(t interface{}) string {
 	return string(json)
 }
 
-func TestPacketBoundariesSynchronous(t *testing.T) {
+func testPacketBoundariesSynchronous(t *testing.T) {
 
 	// A client sends large messages to host, or vice versa.
 	// Each one waits for the other to receive before sending another
@@ -765,5 +766,196 @@ func TestPacketBoundariesAsynchronous(t *testing.T) {
 	// TODO investigate failure to shut down?
 	t.Log("waiting")
 	wg.Wait()
+
+}
+
+func TestAddDeleteClients(t *testing.T) {
+	suppressLog()
+	defer displayLog()
+	var topics topicDirectory
+	topics.directory = make(map[string][]clientDetails)
+
+	client1 := randomClient()
+	client2 := randomClient()
+	client3 := randomClientForTopic(client2.topic)
+	client4 := randomClientForTopic(client2.topic)
+
+	addClientToTopic(&topics, client1)
+	addClientToTopic(&topics, client2)
+	addClientToTopic(&topics, client3)
+	addClientToTopic(&topics, client4)
+
+	clientList := []clientDetails{client1, client2, client3, client4}
+	clientShouldExist := []bool{true, true, true, true}
+
+	for i := range clientList {
+		if clientExists(&topics, clientList[i]) != clientShouldExist[i] {
+			t.Errorf("bare/addClientToTopic: client %v has WRONG existence status, should be %v\n", i, clientShouldExist[i])
+		}
+	}
+
+	deleteClientFromTopic(&topics, client1)
+	deleteClientFromTopic(&topics, client2)
+	deleteClientFromTopic(&topics, client4)
+
+	clientShouldExist = []bool{false, false, true, false}
+
+	for i := range clientList {
+		if clientExists(&topics, clientList[i]) != clientShouldExist[i] {
+			t.Errorf("bare/deleteClientFromTopic(): client %v has WRONG existence status, should be %v\n", i, clientShouldExist[i])
+		}
+	}
+
+}
+
+func TestHandler(t *testing.T) {
+	suppressLog()
+	defer displayLog()
+	//This test fails if you don't give the handler a chance to action the commands, hence the time.Sleep
+	var wg sync.WaitGroup
+	closed := make(chan struct{})
+	clientActionsChan := make(chan clientAction)
+
+	var topics topicDirectory
+	topics.directory = make(map[string][]clientDetails)
+
+	go handleClients(closed, &wg, &topics, clientActionsChan)
+
+	client1 := clientDetails{"client1", "topic1", make(chan message, 2)}
+	client2 := clientDetails{"client2", "topic2", make(chan message, 2)}
+	client3 := clientDetails{"client3", "topic2", make(chan message, 2)}
+	client4 := clientDetails{"client4", "topic2", make(chan message, 2)}
+
+	clientActionsChan <- clientAction{clientAdd, client1}
+	clientActionsChan <- clientAction{clientAdd, client2}
+	clientActionsChan <- clientAction{clientAdd, client3}
+	clientActionsChan <- clientAction{clientAdd, client4}
+
+	time.Sleep(1 * time.Millisecond)
+
+	clientList := []clientDetails{client1, client2, client3, client4}
+	clientShouldExist := []bool{true, true, true, true}
+
+	for i := range clientList {
+		if clientExists(&topics, clientList[i]) != clientShouldExist[i] {
+			t.Errorf("handler/addClientToTopic: client %v has WRONG existence status, should be %v\n", i, clientShouldExist[i])
+		}
+	}
+
+	clientActionsChan <- clientAction{clientDelete, client1}
+	clientActionsChan <- clientAction{clientDelete, client2}
+	clientActionsChan <- clientAction{clientDelete, client4}
+
+	time.Sleep(1 * time.Millisecond)
+
+	clientShouldExist = []bool{false, false, true, false}
+
+	for i := range clientList {
+		if clientExists(&topics, clientList[i]) != clientShouldExist[i] {
+			t.Errorf("handler/deleteClientFromTopic(): client %v has WRONG existence status, should be %v\n", i, clientShouldExist[i])
+			t.Errorf("%v", topics.directory)
+		}
+	}
+
+}
+
+func randomClient() clientDetails {
+	return clientDetails{uuid.New().String(), uuid.New().String(), make(chan message)}
+}
+
+func randomClientForTopic(topic string) clientDetails {
+	return clientDetails{uuid.New().String(), topic, make(chan message)}
+}
+
+func clientExists(topics *topicDirectory, client clientDetails) bool {
+
+	topics.Lock()
+	existingClients := topics.directory[client.topic]
+	topics.Unlock()
+
+	for _, existingClient := range existingClients {
+		if client.name == existingClient.name {
+			return true
+
+		}
+	}
+
+	return false
+
+}
+
+func TestSlashify(t *testing.T) {
+
+	if "/foo" != slashify("foo") {
+		t.Errorf("Slashify not prefixing slash ")
+	}
+	if "//foo" == slashify("/foo") {
+		t.Errorf("Slashify prefixing additional slash")
+	}
+	if "/foo" != slashify("/foo/") {
+		t.Errorf("Slashify not removing trailing slash")
+	}
+	if "/foo" != slashify("foo/") {
+		t.Errorf("Slashify not both removing trailing slash AND prefixing slash")
+	}
+
+	b := "foo/bar/rab/oof/"
+	if "/foo/bar/rab/oof" != slashify(b) {
+		t.Errorf("Slashify not coping with internal slashes %s -> %s", b, slashify(b))
+	}
+
+}
+
+func suppressLog() {
+	var ignore bytes.Buffer
+	logignore := bufio.NewWriter(&ignore)
+	log.SetOutput(logignore)
+}
+
+func displayLog() {
+	log.SetOutput(os.Stdout)
+}
+
+func TestGetConnectionTypeFromPath(t *testing.T) {
+
+	assert.Equal(t, "connectionType", getConnectionTypeFromPath("/connectionType/shellID"))
+	assert.Equal(t, "", getConnectionTypeFromPath("NoLeadingSlash/A/B/C"))
+	assert.Equal(t, "foo%20bar", getConnectionTypeFromPath("/foo%20bar/glum"))
+	assert.Equal(t, "", getConnectionTypeFromPath("ooops/foo%20bar/glum"))
+}
+
+func TestGetHostTopicFromUniqueTopic(t *testing.T) {
+
+	assert.Equal(t, "shellID", getHostTopicFromUniqueTopic("shellID"))
+	assert.Equal(t, "NoLeadingSlash", getHostTopicFromUniqueTopic("NoLeadingSlash/A/B/C"))
+	assert.Equal(t, "", getHostTopicFromUniqueTopic("/foo%20bar/glum"))
+	assert.Equal(t, "ooops", getHostTopicFromUniqueTopic("ooops/foo%20bar/glum"))
+}
+
+func TestGetTopicFromPath(t *testing.T) {
+
+	assert.Equal(t, "shellID", getTopicFromPath("/connectionType/shellID"))
+	assert.Equal(t, "", getTopicFromPath("NoLeadingSlash/A/B/C"))
+	assert.Equal(t, "shell%20ID/connection%20ID", getTopicFromPath("/connectionType/shell%20ID/connection%20ID"))
+	assert.Equal(t, "shellID/connectionID", getTopicFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
+	assert.Equal(t, "shellID/connectionID", getTopicFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
+}
+
+func TestGetShellIDFromPath(t *testing.T) {
+
+	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID"))
+	assert.Equal(t, "", getShellIDFromPath("NoLeadingSlash/A/B/C"))
+	assert.Equal(t, "shell%20ID", getShellIDFromPath("/connectionType/shell%20ID/connection%20ID"))
+	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
+	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
+}
+
+func TestGetConnectionIDFromPath(t *testing.T) {
+
+	assert.Equal(t, "", getConnectionIDFromPath("/connectionType/shellID"))
+	assert.Equal(t, "", getConnectionIDFromPath("NoLeadingSlash/A/B/C"))
+	assert.Equal(t, "connection%20ID", getConnectionIDFromPath("/connectionType/shell%20ID/connection%20ID  "))
+	assert.Equal(t, "connectionID", getConnectionIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
+	assert.Equal(t, "connectionID", getConnectionIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
 
 }

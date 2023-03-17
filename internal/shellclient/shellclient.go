@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
 	"github.com/practable/jump/internal/reconws"
 	"github.com/practable/jump/internal/tcpconnect"
+	log "github.com/sirupsen/logrus"
 )
 
 // Client runs a listener for local ssh connections on a local tcp port
