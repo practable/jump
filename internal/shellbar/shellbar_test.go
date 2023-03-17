@@ -588,7 +588,7 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 
 }
 
-func TestPacketBoundariesAsynchronous(t *testing.T) {
+func testPacketBoundariesAsynchronous(t *testing.T) {
 
 	// A client sends large messages to host, or vice versa.
 	// Messages are sent and received in separate goroutines

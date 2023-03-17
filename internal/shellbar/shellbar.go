@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -17,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/eclesh/welford"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/practable/jump/internal/permission"
@@ -128,7 +126,7 @@ type Client struct {
 
 	audience string
 
-	stats *Stats
+	stats *stats
 
 	name string
 
@@ -162,11 +160,7 @@ type RxTx struct {
 
 // ReportStats represents statistics to be reported on a connection
 type ReportStats struct {
-	Last string `json:"last"` //how many seconds ago...
-
-	Size float64 `json:"size"`
-
-	Fps float64 `json:"fps"`
+	Last string `json:"last"`
 }
 
 // ClientReport represents statistics on a client, and omits non-serialisable internal references
@@ -181,7 +175,7 @@ type ClientReport struct {
 
 	RemoteAddr string `json:"remote_address"`
 
-	Stats RxTx `json:"statistics"`
+	Statistics ReportStats `json:"statistcs"`
 
 	Topic string `json:"topic"`
 
@@ -193,21 +187,10 @@ type StatsCommand struct {
 	Command string `json:"cmd"`
 }
 
-// Stats represents statistics for (video) frames received and transmitted
-type Stats struct {
-	rx *Frames
-	tx *Frames
-}
-
-// Frames represents statistics for (video) frames
-type Frames struct {
+// Stats represents statistics about when the last transmission was made
+type stats struct {
+	mu   *sync.RWMutex
 	last time.Time
-
-	size *welford.Stats
-
-	ns *welford.Stats
-
-	mu *sync.RWMutex
 }
 
 // messages will be wrapped in this struct for muxing
@@ -546,16 +529,10 @@ func (c *Client) readPump() {
 			c.hub.broadcast <- message{sender: *c, data: data, mt: mt}
 
 			log.WithFields(log.Fields{"topic": c.topic, "size": size}).Tracef("%s: broadacast %d-byte message to topic %s", id, size, c.topic)
-			c.stats.tx.mu.Lock()
-			t := time.Now()
-			if c.stats.tx.ns.Count() > 0 {
-				c.stats.tx.ns.Add(float64(t.UnixNano() - c.stats.tx.last.UnixNano()))
-			} else {
-				c.stats.tx.ns.Add(float64(t.UnixNano() - c.connectedAt.UnixNano()))
-			}
-			c.stats.tx.last = t
-			c.stats.tx.size.Add(float64(len(data)))
-			c.stats.tx.mu.Unlock()
+
+			c.stats.mu.Lock()
+			c.stats.last = time.Now()
+			c.stats.mu.Unlock()
 
 		} else {
 			log.WithFields(log.Fields{"topic": c.topic, "size": size}).Tracef("%s: ignored %d-byte message intended for broadcast to topic %s", id, size, c.topic)
@@ -631,19 +608,7 @@ func (c *Client) writePump(closed <-chan struct{}, cancelled <-chan struct{}) {
 				log.WithFields(log.Fields{"topic": c.topic, "size": size}).Tracef("%s: wrote %d-byte message from topic %s", id, size, c.topic)
 
 				// don't queue chunks; makes reading JSON objects on the host connectAction channel fail if two connects happen together
-
-				c.stats.rx.mu.Lock()
-
-				t := time.Now()
-				if c.stats.rx.ns.Count() > 0 {
-					c.stats.rx.ns.Add(float64(t.UnixNano() - c.stats.rx.last.UnixNano()))
-				} else {
-					c.stats.rx.ns.Add(float64(t.UnixNano() - c.connectedAt.UnixNano()))
-				}
-				c.stats.rx.last = t
-				c.stats.rx.size.Add(float64(size))
-
-				c.stats.rx.mu.Unlock()
+				// don't record stats on messages received (we already recorded them on what was transmitting the message)
 
 				if err := w.Close(); err != nil {
 					return
@@ -797,9 +762,7 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 
 	if ct == Shell {
 		// initialise statistics
-		tx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-		rx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-		stats := &Stats{tx: tx, rx: rx}
+		stats := &stats{mu: &sync.RWMutex{}} //Leave last at default value
 
 		client := &Client{hub: hub,
 			audience:       config.Audience,
@@ -875,9 +838,7 @@ func serveWs(closed <-chan struct{}, hub *Hub, w http.ResponseWriter, r *http.Re
 // StatsClient starts a routine which sends stats reports on demand.
 func statsClient(closed <-chan struct{}, wg *sync.WaitGroup, hub *Hub, config Config) {
 
-	tx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-	rx := &Frames{size: welford.New(), ns: welford.New(), mu: &sync.RWMutex{}}
-	stats := &Stats{tx: tx, rx: rx}
+	stats := &stats{mu: &sync.RWMutex{}}
 
 	client := &Client{hub: hub,
 		connectedAt: time.Now(),
@@ -967,44 +928,12 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup, confi
 		for _, topic := range c.hub.clients {
 			for client := range topic {
 
-				client.stats.tx.mu.RLock()
-
-				var tx ReportStats
-
-				if client.stats.tx.size.Count() > 0 {
-					tx = ReportStats{
-						Last: time.Since(client.stats.tx.last).String(),
-						Size: math.Round(client.stats.tx.size.Mean()),
-						Fps:  fpsFromNs(client.stats.tx.ns.Mean()),
-					}
-				} else {
-					tx = ReportStats{
-						Last: "Never",
-						Size: 0,
-						Fps:  0,
-					}
+				client.stats.mu.RLock()
+				rs := ReportStats{
+					Last: time.Since(client.stats.last).String(),
 				}
 
-				client.stats.tx.mu.RUnlock()
-
-				client.stats.rx.mu.RLock()
-				var rx ReportStats
-
-				if client.stats.rx.size.Count() > 0 {
-					rx = ReportStats{
-						Last: time.Since(client.stats.rx.last).String(),
-						Size: math.Round(client.stats.rx.size.Mean()),
-						Fps:  fpsFromNs(client.stats.rx.ns.Mean()),
-					}
-				} else {
-					rx = ReportStats{
-						Last: "Never",
-						Size: 0,
-						Fps:  0,
-					}
-				}
-
-				client.stats.rx.mu.RUnlock()
+				client.stats.mu.RUnlock()
 
 				c, err := client.connectedAt.UTC().MarshalText()
 				if err != nil {
@@ -1023,10 +952,7 @@ func (c *Client) statsReporter(closed <-chan struct{}, wg *sync.WaitGroup, confi
 					ExpiresAt:   string(ea),
 					RemoteAddr:  client.remoteAddr,
 					UserAgent:   client.userAgent,
-					Stats: RxTx{
-						Tx: tx,
-						Rx: rx,
-					},
+					Statistics:  rs,
 				}
 
 				reports = append(reports, report)
