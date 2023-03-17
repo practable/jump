@@ -100,6 +100,9 @@ type Config struct {
 	// BufferSize is the channel buffer size for clients
 	BufferSize int64
 
+	// connection type represents the parent path in the routing e.g. connect or shell
+	ConnectionType string
+
 	// hub is a pointer to the messaging hub (private)
 	hub *Hub
 
@@ -243,10 +246,11 @@ func Shellbar(ctx context.Context, config Config) {
 
 // NewDefaultConfig returns a pointer to a new, default, Config
 func NewDefaultConfig() *Config {
-	c := &Config{}
-	c.Listen = 3000
-	c.CodeStore = ttlcode.NewDefaultCodeStore()
-	return c
+	return &Config{
+		Listen:         3000,
+		ConnectionType: "connect",
+		CodeStore:      ttlcode.NewDefaultCodeStore(),
+	}
 }
 
 // WithListen sets the listening port in the Config
@@ -496,34 +500,17 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 
 }
 
-// ConnectionType represents whether the connection is for Session, Shell or Unsupported
-type ConnectionType int
-
-// Enumerated connection types
-const (
-	Session ConnectionType = iota
-	Shell
-	Unsupported
-)
-
 // serveWS handles websocket requests from clients.
 func serveWS(ctx context.Context, config Config, w http.ResponseWriter, r *http.Request) {
 
 	id := "shellbar.serveWs(" + uuid.New().String()[0:6] + ")"
-
-	// check if topic is of a supported type before we go any further
-	ct := Unsupported
 
 	path := slashify(r.URL.Path)
 
 	connectionType := getConnectionTypeFromPath(path)
 	topic := getTopicFromPath(path)
 
-	if connectionType == "shell" {
-		ct = Shell
-	}
-
-	if ct == Unsupported {
+	if connectionType != config.ConnectionType {
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		log.WithField("connectionType", connectionType).Errorf("%s: connectionType %s unsupported", id, connectionType)
 		return
@@ -617,80 +604,76 @@ func serveWS(ctx context.Context, config Config, w http.ResponseWriter, r *http.
 	//cancel the connection when the token has expired
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(ttl)*time.Second)
 
-	if ct == Shell {
-		// initialise statistics
-		stats := &stats{mu: &sync.RWMutex{}} //Leave last at default value
+	// initialise statistics
+	stats := &stats{mu: &sync.RWMutex{}} //Leave last at default value
 
-		client := &Client{hub: config.hub,
-			audience:       config.Audience,
-			canRead:        canRead,
-			canWrite:       canWrite,
-			clearToSend:    make(chan struct{}),
-			conn:           conn,
-			connectedAt:    time.Now(),
-			expiresAt:      time.Unix((*token.ExpiresAt).Unix(), 0),
-			hostAlertUUID:  uuid.New().String(),
-			mustWaitToSend: token.AlertHost,
-			name:           uuid.New().String(),
-			remoteAddr:     r.Header.Get("X-Forwarded-For"),
-			send:           make(chan message, config.BufferSize),
-			stats:          stats,
-			topic:          topic + token.TopicSalt,
-			userAgent:      r.UserAgent(),
-		}
-		client.hub.register <- client
-
-		log.WithField("Topic", client.topic).Tracef("%s: registering client at topic %s with name %s", id, client.topic, client.name)
-
-		go client.writePump(cctx, cancel) //context will timeout when the token has expired
-		go client.readPump()
-
-		log.WithField("topic", topic+token.TopicSalt).Tracef("%s: started shellrelay client on topic %s", id, topic+token.TopicSalt)
-
-		if token.AlertHost {
-			log.WithField("topic", topic+token.TopicSalt).Tracef("%s: alert host of topic %s to new client %s with salt %s", id, topic, client.name, token.TopicSalt)
-
-			// alert SSH host agent to make a new connection to relay at the same address
-			// no stats required because we are not registering to receive messages
-			adminClient := &Client{
-				topic: getHostTopicFromUniqueTopic(topic),
-				name:  uuid.New().String(),
-			}
-
-			permission.SetAlertHost(&token, false) //turn off host alert
-			code = config.CodeStore.SubmitToken(token)
-
-			if code == "" {
-				log.Errorf("%s: failed to submit host connect token in exchange for a code", id)
-				return
-			}
-
-			// same URL as client used, but different code (and leave out the salt)
-			// use the config.Audience to generate our URI because the token might have
-			// multiple audiences, whereas this connection must be made here to the config.Audience
-			hostAlertURI := config.Audience + "/" + token.ConnectionType + "/" + token.Topic + "?code=" + code
-			ca := ConnectionAction{
-				Action: "connect",
-				URI:    hostAlertURI,
-				UUID:   client.hostAlertUUID,
-			}
-
-			camsg, err := json.Marshal(ca)
-
-			if err != nil {
-				log.WithFields(log.Fields{"uuid": client.hostAlertUUID, "uri": hostAlertURI, "error": err}).Errorf("%s: Failed to make connectionAction message", id)
-				return
-			}
-
-			config.hub.broadcast <- message{sender: *adminClient, data: camsg, mt: websocket.TextMessage}
-			log.WithFields(log.Fields{"uuid": client.hostAlertUUID, "uri": hostAlertURI, "code": code}).Debugf("%s: sent host CONNECT for topic %s with UUID:%s at URI:%s", id, topic, client.hostAlertUUID, hostAlertURI)
-
-		}
-
-		return
-	} else {
-		cancel() //don't leak the context resources
+	client := &Client{hub: config.hub,
+		audience:       config.Audience,
+		canRead:        canRead,
+		canWrite:       canWrite,
+		clearToSend:    make(chan struct{}),
+		conn:           conn,
+		connectedAt:    time.Now(),
+		expiresAt:      time.Unix((*token.ExpiresAt).Unix(), 0),
+		hostAlertUUID:  uuid.New().String(),
+		mustWaitToSend: token.AlertHost,
+		name:           uuid.New().String(),
+		remoteAddr:     r.Header.Get("X-Forwarded-For"),
+		send:           make(chan message, config.BufferSize),
+		stats:          stats,
+		topic:          topic + token.TopicSalt,
+		userAgent:      r.UserAgent(),
 	}
+	client.hub.register <- client
+
+	log.WithField("Topic", client.topic).Tracef("%s: registering client at topic %s with name %s", id, client.topic, client.name)
+
+	go client.writePump(cctx, cancel) //context will timeout when the token has expired
+	go client.readPump()
+
+	log.WithField("topic", topic+token.TopicSalt).Tracef("%s: started shellrelay client on topic %s", id, topic+token.TopicSalt)
+
+	if token.AlertHost {
+		log.WithField("topic", topic+token.TopicSalt).Tracef("%s: alert host of topic %s to new client %s with salt %s", id, topic, client.name, token.TopicSalt)
+
+		// alert SSH host agent to make a new connection to relay at the same address
+		// no stats required because we are not registering to receive messages
+		adminClient := &Client{
+			topic: getHostTopicFromUniqueTopic(topic),
+			name:  uuid.New().String(),
+		}
+
+		permission.SetAlertHost(&token, false) //turn off host alert
+		code = config.CodeStore.SubmitToken(token)
+
+		if code == "" {
+			log.Errorf("%s: failed to submit host connect token in exchange for a code", id)
+			return
+		}
+
+		// same URL as client used, but different code (and leave out the salt)
+		// use the config.Audience to generate our URI because the token might have
+		// multiple audiences, whereas this connection must be made here to the config.Audience
+		hostAlertURI := config.Audience + "/" + token.ConnectionType + "/" + token.Topic + "?code=" + code
+		ca := ConnectionAction{
+			Action: "connect",
+			URI:    hostAlertURI,
+			UUID:   client.hostAlertUUID,
+		}
+
+		camsg, err := json.Marshal(ca)
+
+		if err != nil {
+			log.WithFields(log.Fields{"uuid": client.hostAlertUUID, "uri": hostAlertURI, "error": err}).Errorf("%s: Failed to make connectionAction message", id)
+			return
+		}
+
+		config.hub.broadcast <- message{sender: *adminClient, data: camsg, mt: websocket.TextMessage}
+		log.WithFields(log.Fields{"uuid": client.hostAlertUUID, "uri": hostAlertURI, "code": code}).Debugf("%s: sent host CONNECT for topic %s with UUID:%s at URI:%s", id, topic, client.hostAlertUUID, hostAlertURI)
+
+	}
+
+	return
 
 }
 
@@ -706,7 +689,7 @@ func statsClient(ctx context.Context, config Config) {
 		stats:       stats,
 		name:        "stats-generator-" + uuid.New().String(),
 		audience:    config.Audience,
-		userAgent:   "shellbar",
+		userAgent:   "internal",
 		remoteAddr:  "internal",
 		canRead:     true,
 		canWrite:    true,
@@ -832,6 +815,7 @@ func filterClients(clients []clientDetails, filter clientDetails) []clientDetail
 	return filteredClients
 }
 
+// slashify is used in serveWS
 func slashify(path string) string {
 
 	//remove trailing slash (that's for directories)
@@ -845,6 +829,7 @@ func slashify(path string) string {
 
 }
 
+// getHostTopicFromUniqueTopic used in serveWS
 func getHostTopicFromUniqueTopic(topic string) string {
 
 	re := regexp.MustCompile(`^([\w\%-]*)`)
@@ -860,6 +845,7 @@ func getHostTopicFromUniqueTopic(topic string) string {
 	return matches[1]
 }
 
+// getConnectionTypeFromPath is used in serveWS
 func getConnectionTypeFromPath(path string) string {
 
 	re := regexp.MustCompile(`^\/([\w\%-]*)`)
@@ -875,6 +861,7 @@ func getConnectionTypeFromPath(path string) string {
 	return matches[1]
 }
 
+// getTopicFromPath used in serveWS
 func getTopicFromPath(path string) string {
 
 	re := regexp.MustCompile(`^\/[\w\%-]*\/([\w\%-\/]*)`)
@@ -885,28 +872,4 @@ func getTopicFromPath(path string) string {
 	}
 
 	return matches[1]
-}
-
-func getShellIDFromPath(path string) string {
-
-	re := regexp.MustCompile(`^\/[\w\%-]*\/([\w\%-]*)`)
-	matches := re.FindStringSubmatch(path)
-
-	if len(matches) < 2 {
-		return ""
-	}
-
-	return matches[1]
-}
-
-func getConnectionIDFromPath(path string) string {
-
-	re := regexp.MustCompile(`^\/(?:([\w\%-]*)\/){2}([\w\%-]*)`)
-	matches := re.FindStringSubmatch(path)
-
-	if len(matches) < 2 {
-		return ""
-	}
-
-	return matches[2]
 }

@@ -70,11 +70,12 @@ func TestShellbar(t *testing.T) {
 	secret := "somesecret"
 	cs := ttlcode.NewDefaultCodeStore()
 	config := Config{
-		Listen:     port,
-		Audience:   audience,
-		CodeStore:  cs,
-		Secret:     secret,
-		StatsEvery: time.Second,
+		Listen:         port,
+		Audience:       audience,
+		CodeStore:      cs,
+		ConnectionType: "shell",
+		Secret:         secret,
+		StatsEvery:     time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -810,23 +811,4 @@ func TestGetTopicFromPath(t *testing.T) {
 	assert.Equal(t, "shell%20ID/connection%20ID", getTopicFromPath("/connectionType/shell%20ID/connection%20ID"))
 	assert.Equal(t, "shellID/connectionID", getTopicFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
 	assert.Equal(t, "shellID/connectionID", getTopicFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
-}
-
-func TestGetShellIDFromPath(t *testing.T) {
-
-	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID"))
-	assert.Equal(t, "", getShellIDFromPath("NoLeadingSlash/A/B/C"))
-	assert.Equal(t, "shell%20ID", getShellIDFromPath("/connectionType/shell%20ID/connection%20ID"))
-	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
-	assert.Equal(t, "shellID", getShellIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
-}
-
-func TestGetConnectionIDFromPath(t *testing.T) {
-
-	assert.Equal(t, "", getConnectionIDFromPath("/connectionType/shellID"))
-	assert.Equal(t, "", getConnectionIDFromPath("NoLeadingSlash/A/B/C"))
-	assert.Equal(t, "connection%20ID", getConnectionIDFromPath("/connectionType/shell%20ID/connection%20ID  "))
-	assert.Equal(t, "connectionID", getConnectionIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something"))
-	assert.Equal(t, "connectionID", getConnectionIDFromPath("/connectionType/shellID/connectionID?QueryParams=Something&SomeThing=Else"))
-
 }
