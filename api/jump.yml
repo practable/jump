@@ -1,0 +1,74 @@
+swagger: '2.0'
+info:
+  version: '0.4'
+  title: jump
+  description: API for accessing github.com/practable/jump websocket relay
+  contact:
+    email: timothy.d.drysdale@gmail.com
+    name: Timothy Drysdale
+    url: https://github.com/practable
+host: localhost
+basePath: /api/v1
+securityDefinitions: {}
+schemes:
+- http
+- https
+produces:
+- application/json
+securityDefinitions:
+  Bearer:
+    type: apiKey
+    name: Authorization
+    in: header 
+paths:
+  /connect/{host_id}:
+    post:
+      description: Request a websocket connection for host specified by host_id. 
+      summary: request a websocket connection for host specified by host_id
+      operationId: jump
+      deprecated: false
+      produces:
+      - application/json
+      parameters:
+      - name: host_id
+        in: path
+        required: true
+        type: string
+        description: Jump host identification code
+      security:
+        - Bearer: []  
+      responses:
+        200:
+          description: ''
+          schema:
+            type: object
+            properties:
+              uri:
+                type: string
+          examples:
+            application/json: {"uri":"wss://example.com/jump/connect/host123?code=8b4f378e-6edc-42d5-b497-0f6d32ad8be3"}
+          headers: {}
+        400:
+          description: BadRequest
+          schema:
+             $ref: '#/definitions/Error'
+        401:
+          description: Unauthorized
+          schema:
+             $ref: '#/definitions/Error'
+        500:
+          description: Internal Error
+          schema:
+             $ref: '#/definitions/Error'             
+          
+definitions:
+  Error:
+    type: object
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    required:
+      - code
+      - message
