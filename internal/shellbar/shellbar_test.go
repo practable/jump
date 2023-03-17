@@ -26,9 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// NOTE don't use reconws.Reconnect for production clients anymore;
-// it does NOT understand the use of auth codes
-// use Dial instead.
 var debug bool
 
 func init() {
