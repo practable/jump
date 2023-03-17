@@ -20,7 +20,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/phayes/freeport"
+	"github.com/practable/jump/internal/chanio"
 	"github.com/practable/jump/internal/tcpconnect"
+	"github.com/practable/jump/internal/ws"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -68,9 +71,90 @@ func (p *Pipe) Run(ctx context.Context) {
 	<-ctx.Done()
 
 }
-func (p *Pipe) RunPacket(ctx context.Context) {
 
-	fmt.Print("NOT IMPLEMENTED")
+func (p *Pipe) RunDevelop(ctx context.Context) {
+	p.RunWS(ctx)
+}
+
+/*
+                               using freeport
+          |--------|          |--------|             |--------|           |--------|
+          \        \  ---->   \        \             \        \  ---->    \        \
+ Target   | target | io.Copy  | host   |  websocket  | client | io.Copy   | client |  Listen
+ Port     \        \  <----   \        \   <--->     \        \  <-----   \        \  Port
+          |--------|          |--------|             |--------|           |--------|
+*/
+func (p *Pipe) RunWS(ctx context.Context) {
+	log.Info("WS Version")
+
+	targetURL := "localhost:" + strconv.Itoa(p.Target)
+
+	wsPort, err := freeport.GetFreePort()
+	if err != nil {
+		return
+	}
+	wsURL := "ws://localhost:" + strconv.Itoa(wsPort)
+
+	go ws.Host(ctx, wsPort, targetURL)
+	go ws.Client(ctx, p.Listen, wsURL)
+
+	<-ctx.Done()
+
+}
+
+/*
+
+          |--------|          |--------|             |--------|           |--------|
+          \        \  ---->   \        \ ----a--->   \        \  ---->    \        \
+ Target   | target | io.Copy  | left   |  channels   | right  | io.Copy   | client |  Listen
+ Port     \        \  <----   \        \             \        \  <-----   \        \  Port
+          |--------|          |--------| <---b-----  |--------|           |--------|
+*/
+// RunDevelop represents a pipe with an intermediate communication over channels
+// which, if it works, proves that we can relay because our websocket clients
+// have a channel-based interface (TODO consider if that should stay the case?)
+func (p *Pipe) RunChannel(ctx context.Context) {
+	log.Info("Channel Version")
+	listenURL := ":" + strconv.Itoa(p.Listen)
+	targetURL := "localhost:" + strconv.Itoa(p.Target)
+
+	incoming, err := net.Listen("tcp", listenURL)
+
+	if err != nil {
+		log.Errorf("could not start server on %s: %v", listenURL, err)
+	}
+
+	log.Info("server running on %s\n", listenURL)
+
+	//https://www.zupzup.org/go-port-forwarding/index.html
+	client, err := incoming.Accept()
+	if err != nil {
+		log.Fatal("could not accept client connection", err)
+	}
+	defer client.Close()
+	log.Infof("client '%v' connected!\n", client.RemoteAddr())
+
+	target, err := net.Dial("tcp", targetURL)
+	if err != nil {
+		log.Fatal("could not connect to target", err)
+	}
+	defer target.Close()
+	log.Infof("connection to server %v established!\n", target.RemoteAddr())
+
+	a := make(chan []byte, 256)
+	b := make(chan []byte, 256)
+
+	// TODO check a, b have same sense as diagram (functionally, does not matter though)
+	left := chanio.New(ctx, a, b, "left")
+	right := chanio.New(ctx, b, a, "right")
+
+	go func() { io.Copy(target, left) }()
+	go func() { io.Copy(left, target) }()
+
+	go func() { io.Copy(client, right) }()
+	go func() { io.Copy(right, client) }()
+
+	<-ctx.Done()
 
 }
 

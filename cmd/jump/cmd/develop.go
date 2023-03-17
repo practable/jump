@@ -30,20 +30,20 @@ import (
 )
 
 // packetCmd represents the packet command
-var packetCmd = &cobra.Command{
-	Use:   "packet",
-	Short: "packet connects two ports using packet-based comms",
+var developCmd = &cobra.Command{
+	Use:   "develop",
+	Short: "develop connects two ports using the latest implementation under test",
 	Long: `Set the operating paramters with environment variables, for example
-export JUMP_PIPE_PACKET_PORT_LISTEN=2222
-export JUMP_PIPE_PACKET_PORT_TARGET=22
-export JUMP_PIPE_PACKET_LOG_LEVEL=warn
-export JUMP_PIPE_PACKET_LOG_FORMAT=json
+export JUMP_PIPE_DEVELOP_PORT_LISTEN=2222
+export JUMP_PIPE_DEVELOP_PORT_TARGET=22
+export JUMP_PIPE_DEVELOP_LOG_LEVEL=warn
+export JUMP_PIPE_DEVELOP_LOG_FORMAT=json
 jump pipe packet
 `,
 
 	Run: func(cmd *cobra.Command, args []string) {
 
-		viper.SetEnvPrefix("JUMP_PIPE_PACKET")
+		viper.SetEnvPrefix("JUMP_PIPE_DEVELOP")
 		viper.AutomaticEnv()
 
 		viper.SetDefault("log_format", "json")
@@ -117,11 +117,11 @@ jump pipe packet
 
 		p := pipe.New(config)
 
-		p.RunPacket(ctx)
+		p.RunDevelop(ctx)
 
 	},
 }
 
 func init() {
-	pipeCmd.AddCommand(packetCmd)
+	pipeCmd.AddCommand(developCmd)
 }

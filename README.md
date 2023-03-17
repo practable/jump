@@ -19,13 +19,9 @@ Institutional networks vary in their ability to provide admin access to machines
   
 ## Status
 
-We've got over 50 experiments under management at the present time - with some of our latest in our new 1:6 scale ISO containers:
+We've got over 100 experiments under management at the present time - many in our latest in our new 1:6 scale ISO containers:
 
 <img src="./img/AGB_Spinners.jpg" width="60%" alt="One-sixth scale model containers holding spinner experiments">
-
-## Limitations
-
-Human-operated `ssh` sessions work well but `ansible` connections tend to fail (perhaps due to the number of connections required and/or a potential issue with handling large file transfers). At present, administration over `jump`  must be done manually. Further work is intended but currently on hold pending availability of development capacity/prioritisation. If you would like to sponsor this work, please get in touch.
 
 ## Overview
 

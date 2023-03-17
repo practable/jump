@@ -36,8 +36,8 @@ func TestIOCopy(t *testing.T) {
 
 	defer cancel()
 
-	left := New(ctx, a, b)
-	right := New(ctx, c, d)
+	left := New(ctx, a, b, "left")
+	right := New(ctx, c, d, "right")
 
 	go func() { io.Copy(left, right) }()
 	go func() { io.Copy(right, left) }()
