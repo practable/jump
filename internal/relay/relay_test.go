@@ -1,4 +1,4 @@
-package relay
+package shellrelay
 
 import (
 	"bufio"
@@ -6,11 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,12 +15,12 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
+	"github.com/practable/jump/internal/permission"
+	"github.com/practable/jump/internal/reconws"
+	"github.com/practable/jump/internal/shellbar"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/practable/jump/internal/access/restapi/operations"
-	"github.com/practable/jump/internal/permission"
-	"github.com/practable/jump/internal/reconws"
 )
 
 func TestRelay(t *testing.T) {
@@ -62,7 +59,15 @@ func TestRelay(t *testing.T) {
 
 	wg.Add(1)
 
-	go Relay(closed, &wg, accessPort, relayPort, audience, secret, target)
+	config := Config{
+		AccessPort: accessPort,
+		Audience:   audience,
+		RelayPort:  relayPort,
+		Secret:     secret,
+		Target:     target,
+	}
+
+	go Relay(closed, &wg, config)
 
 	time.Sleep(time.Second) // big safety margin to get crossbar running
 
@@ -70,162 +75,138 @@ func TestRelay(t *testing.T) {
 
 	// TestBidirectionalChat
 
-	client := &http.Client{}
-
 	var claims permission.Token
 
 	start := jwt.NewNumericDate(time.Now().Add(-time.Second))
-	after5 := jwt.NewNumericDate(time.Now().Add(5 * time.Second))
+	after := jwt.NewNumericDate(time.Now().Add(30 * time.Second))
 	claims.IssuedAt = start
 	claims.NotBefore = start
-	claims.ExpiresAt = after5
+	claims.ExpiresAt = after
 
 	claims.Audience = jwt.ClaimStrings{audience}
 	claims.Topic = "123"
-	claims.ConnectionType = "session"
-	claims.Scopes = []string{"read", "write"}
+	claims.ConnectionType = "shell"
+	claims.Scopes = []string{"host"}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	hostToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// Sign and get the complete encoded token as a string using the secret
-	bearer, err := token.SignedString([]byte(secret))
+	hostBearer, err := hostToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
-
-	// clientPing gets uri with code
-	req, err := http.NewRequest("POST", audience+"/session/123", nil)
-	assert.NoError(t, err)
-	req.Header.Add("Authorization", bearer)
-
-	resp, err := client.Do(req)
-	assert.NoError(t, err)
-	body, _ := ioutil.ReadAll(resp.Body)
-
-	var ping operations.SessionOKBody
-	err = json.Unmarshal(body, &ping)
-	assert.NoError(t, err)
-	assert.True(t, strings.HasPrefix(ping.URI, target+"/session/123?code="))
-
-	// clientPong gets uri with code
-	req, err = http.NewRequest("POST", audience+"/session/123", nil)
-	assert.NoError(t, err)
-	req.Header.Add("Authorization", bearer)
-
-	resp, err = client.Do(req)
-	assert.NoError(t, err)
-	body, _ = ioutil.ReadAll(resp.Body)
-
-	var pong operations.SessionOKBody
-	err = json.Unmarshal(body, &pong)
-	assert.NoError(t, err)
-	assert.True(t, strings.HasPrefix(pong.URI, target+"/session/123?code="))
-
-	// now clients connect using their uris...
-
-	var timeout = 100 * time.Millisecond
-	time.Sleep(timeout)
+	hostURI := audience + "/shell/123"
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	s0 := reconws.New()
+	h := reconws.New()
+	go h.ReconnectAuth(ctx, hostURI, hostBearer)
+
+	//hold until connected
+	h.Out <- reconws.WsMessage{Type: websocket.TextMessage}
+
+	// now connect a client
+	claims.Scopes = []string{"client"}
+	clientToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	clientBearer, err := clientToken.SignedString([]byte(secret))
+	assert.NoError(t, err)
+
+	c0 := reconws.New()
+	go c0.ReconnectAuth(ctx, hostURI, clientBearer)
+
+	// wait for client connection message
+
+	var ca shellbar.ConnectionAction
+	select {
+	case msg, ok := <-h.In:
+		assert.True(t, ok)
+		err = json.Unmarshal(msg.Data, &ca)
+		assert.NoError(t, err)
+		assert.Equal(t, "connect", ca.Action)
+	case <-time.After(time.Second):
+		t.Fatal("Failed to get ConnectAction")
+	}
+
+	h1 := reconws.New()
+
 	go func() {
-		err := s0.Dial(ctx, ping.URI)
+		err := h1.Dial(ctx, ca.URI)
 		assert.NoError(t, err)
 	}()
-
-	s1 := reconws.New()
-
-	go func() {
-		err := s1.Dial(ctx, pong.URI)
-		assert.NoError(t, err)
-	}()
-
-	time.Sleep(timeout)
 
 	data := []byte("ping")
-
-	s0.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
-
+	h1.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
+	var timeout = 100 * time.Millisecond
 	select {
-	case msg := <-s1.In:
+	case msg, ok := <-c0.In:
+		assert.True(t, ok)
 		assert.Equal(t, data, msg.Data)
 	case <-time.After(timeout):
-		cancel()
-		t.Fatal("TestBidirectionalChat...FAIL")
+		t.Fatal("Timed out getting ping")
+
 	}
 
-	data = []byte("pong")
-
-	s1.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
+	c1 := reconws.New()
+	go c1.ReconnectAuth(ctx, hostURI, clientBearer)
 
 	select {
-	case msg := <-s0.In:
-		assert.Equal(t, data, msg.Data)
-		t.Logf("TestBidirectionalChat...PASS\n")
-	case <-time.After(timeout):
-		t.Fatal("TestBidirectinalChat...FAIL")
-	}
-	cancel()
-
-	// TestPreventValidCodeAtWrongSessionID
-
-	// reuse client, ping, pong, token etc from previous test
-
-	// clientPing gets uri with code
-	req, err = http.NewRequest("POST", audience+"/session/123", nil)
-	assert.NoError(t, err)
-	req.Header.Add("Authorization", bearer)
-
-	resp, err = client.Do(req)
-	assert.NoError(t, err)
-	body, _ = ioutil.ReadAll(resp.Body)
-
-	err = json.Unmarshal(body, &ping)
-	assert.NoError(t, err)
-	assert.True(t, strings.HasPrefix(ping.URI, target+"/session/123?code="))
-
-	// clientPong gets uri with code
-	req, err = http.NewRequest("POST", audience+"/session/123", nil)
-	assert.NoError(t, err)
-	req.Header.Add("Authorization", bearer)
-
-	resp, err = client.Do(req)
-	assert.NoError(t, err)
-	body, _ = ioutil.ReadAll(resp.Body)
-
-	err = json.Unmarshal(body, &pong)
-	assert.NoError(t, err)
-	assert.True(t, strings.HasPrefix(pong.URI, target+"/session/123?code="))
-
-	// now clients connect using their uris...
-
-	time.Sleep(timeout)
-
-	ctx, cancel = context.WithCancel(context.Background())
-
-	go func() {
-		err := s0.Dial(ctx, strings.Replace(ping.URI, "123", "456", 1))
+	case msg, ok := <-h.In:
+		assert.True(t, ok)
+		err = json.Unmarshal(msg.Data, &ca)
 		assert.NoError(t, err)
-	}()
+		assert.Equal(t, "connect", ca.Action)
+	case <-time.After(time.Second):
+		t.Fatal("Failed to get ConnectAction")
+	}
+
+	h2 := reconws.New()
 
 	go func() {
-		err := s1.Dial(ctx, strings.Replace(pong.URI, "123", "456", 1))
+		err := h2.Dial(ctx, ca.URI)
 		assert.NoError(t, err)
 	}()
 
 	time.Sleep(timeout)
 
-	data = []byte("ping")
+	data = []byte("boo")
 
-	s0.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
+	h2.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
+
+	// c0 must not get this message
+	select {
+	case <-c0.In:
+		t.Fatal("Got unexpected message")
+	case <-time.After(timeout):
+	}
 
 	select {
-	case msg := <-s1.In:
-		t.Fatal("TestPreventValidCodeAtWrongSessionID...FAIL")
+	case msg, ok := <-c1.In:
+		assert.True(t, ok)
 		assert.Equal(t, data, msg.Data)
 	case <-time.After(timeout):
-		cancel()
-		t.Logf("TestPreventValidCodeAtWrongSessionID...PASS")
+		t.Fatal("Timed out getting boo")
 	}
+
+	// h admin
+	// h1 services c0
+	// h2 services c1
+	// send message from c1, h1 must not get it
+	data = []byte("far")
+
+	c1.Out <- reconws.WsMessage{Data: data, Type: websocket.TextMessage}
+
+	select {
+	case <-h1.In:
+		t.Fatal("Got unexpected message")
+	case <-time.After(timeout):
+	}
+
+	select {
+	case msg, ok := <-h2.In:
+		assert.True(t, ok)
+		assert.Equal(t, data, msg.Data)
+	case <-time.After(timeout):
+		t.Fatal("Timed out getting boo")
+	}
+
 	cancel()
 	// teardown relay
 

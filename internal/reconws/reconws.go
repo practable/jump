@@ -31,9 +31,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/jpillora/backoff"
-	log "github.com/sirupsen/logrus"
-	"github.com/practable/jump/internal/access/restapi/operations"
 	"github.com/practable/jump/internal/chanstats"
+	log "github.com/sirupsen/logrus"
 )
 
 // WsMessage represents a websocket message
@@ -54,6 +53,10 @@ type ReconWs struct {
 	Stats           *chanstats.ChanStats
 	URL             string
 	ID              string
+}
+
+type Reply struct {
+	URI string `json:"uri"`
 }
 
 // RetryConfig represents the parameters for when to retry to connect
@@ -181,7 +184,7 @@ func (r *ReconWs) ReconnectAuth(ctx context.Context, url, token string) {
 				continue
 			}
 
-			var session operations.SessionOKBody
+			var session Reply
 
 			err = json.Unmarshal(body, &session)
 

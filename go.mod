@@ -14,7 +14,6 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jessevdk/go-flags v1.5.0
-	github.com/jinzhu/copier v0.3.5
 	github.com/jpillora/backoff v1.0.0
 	github.com/ory/viper v1.7.5
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5

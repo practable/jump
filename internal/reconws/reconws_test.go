@@ -32,10 +32,6 @@ func init() {
 
 }
 
-type Reply struct {
-	URI string `json:"uri"`
-}
-
 func makeTestToken(audience, secret string, ttl int64) (string, error) {
 
 	var claims permission.Token
