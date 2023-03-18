@@ -1,4 +1,4 @@
-package shellhost
+package host
 
 import (
 	"bufio"
@@ -9,17 +9,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
+	"github.com/practable/jump/internal/crossbar"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
-	"github.com/practable/jump/internal/shellbar"
-	"github.com/practable/jump/internal/shellrelay"
+	"github.com/practable/jump/internal/relay"
 	"github.com/practable/jump/internal/tcpconnect"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
@@ -42,75 +41,71 @@ func init() {
 	}
 }
 
-func TestShellHost(t *testing.T) {
+func TestHost(t *testing.T) {
 
 	// Setup logging
 
 	timeout := 100 * time.Millisecond
 
-	// setup shellrelay on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
+	// setup relay on local (free) port
 	ports, err := freeport.GetFreePorts(2)
 	assert.NoError(t, err)
 
 	relayPort := ports[0]
 	accessPort := ports[1]
 
-	shellaccessURI := "http://[::]:" + strconv.Itoa(accessPort)
-	shellrelayURI := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
+	accessURI := "http://[::]:" + strconv.Itoa(accessPort)
+	relayURI := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
 
-	log.Debug(fmt.Sprintf("shellaccessURI:%s\n", shellaccessURI))
-	log.Debug(fmt.Sprintf("shellrelayURI:%s\n", shellrelayURI))
+	base_path := "/api/v1"
+
+	log.Debug(fmt.Sprintf("accessURI:%s\n", accessURI))
+	log.Debug(fmt.Sprintf("relayURI:%s\n", relayURI))
 
 	secret := "testsecret"
 
-	wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	config := shellrelay.Config{
-		AccessPort: accessPort,
-		Audience:   shellaccessURI,
-		RelayPort:  relayPort,
-		Secret:     secret,
-		Target:     shellrelayURI,
+	config := relay.Config{
+		AccessPort:     accessPort,
+		Audience:       accessURI,
+		ConnectionType: "connect",
+		RelayPort:      relayPort,
+		Secret:         secret,
+		Target:         relayURI,
 	}
-	go shellrelay.Relay(closed, &wg, config)
+	go relay.Run(ctx, config)
 
 	// setup mock sshd
-	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	shellport, err := freeport.GetFreePort()
+	sshPort, err := freeport.GetFreePort()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sshduri := ":" + strconv.Itoa(shellport)
+	sshduri := ":" + strconv.Itoa(sshPort)
 
 	echo := tcpconnect.New()
 	go echo.Listen(ctx, sshduri, tcpconnect.SpeakThenEchoHandler)
 
-	time.Sleep(time.Second)
-	time.Sleep(timeout)
-	time.Sleep(timeout)
-	time.Sleep(timeout)
-	time.Sleep(timeout)
+	time.Sleep(2 * time.Second)
 
-	// setup shellhost
-	ct := "shell"
+	// setup host
+	ct := "connect"
 	session := "11014d77-e36e-40b7-9864-5a9239d1a071"
 	scopes := []string{"host"} //host, client scopes are known only to access
 
 	begin := time.Now().Unix() - 1 //ensure it's in the past
 	end := begin + 180
-	claims := permission.NewToken(shellaccessURI, ct, session, scopes, begin, begin, end)
+	claims := permission.NewToken(accessURI, ct, session, scopes, begin, begin, end)
 	hostToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	hostBearer, err := hostToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
-	go Host(ctx, "localhost"+sshduri, shellaccessURI+"/shell/"+session, hostBearer)
+	go Run(ctx, "localhost"+sshduri, accessURI+base_path+"/connect/"+session, hostBearer)
 
 	time.Sleep(time.Second)
 	time.Sleep(timeout)
@@ -120,15 +115,15 @@ func TestShellHost(t *testing.T) {
 
 	// ============================= START  TESTS ======================================
 
-	// *** TestConnectToLocalShell ***
+	// *** TestConnectToLocal ***
 
 	scopes = []string{"client"} //host, client scopes are known only to access
-	claims = permission.NewToken(shellaccessURI, "shell", session, scopes, begin, begin, end)
+	claims = permission.NewToken(accessURI, "connect", session, scopes, begin, begin, end)
 	clientToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	clientBearer, err := clientToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
-	clientURI := shellaccessURI + "/shell/" + session
+	clientURI := accessURI + base_path + "/connect/" + session
 
 	c0 := reconws.New()
 	go c0.ReconnectAuth(ctx, clientURI, clientBearer)
@@ -137,7 +132,7 @@ func TestShellHost(t *testing.T) {
 	go c1.ReconnectAuth(ctx, clientURI, clientBearer)
 
 	// Send messages, get echos...
-	time.Sleep(3 * time.Second) //give shellhost a chance to make new connections
+	time.Sleep(3 * time.Second) //give host a chance to make new connections
 
 	time.Sleep(timeout)
 	time.Sleep(timeout)
@@ -190,7 +185,7 @@ func TestShellHost(t *testing.T) {
 	case msg, ok := <-c0.In:
 		assert.True(t, ok)
 		assert.Equal(t, data0, msg.Data)
-		t.Log("TestConnectToLocalShell...PASS")
+		t.Log("TestConnectToLocal...PASS")
 	}
 
 	// get nothing as planned
@@ -227,15 +222,15 @@ func TestShellHost(t *testing.T) {
 
 	// while connected, get stats
 	scopes = []string{"stats"}
-	claims = permission.NewToken(shellaccessURI, "shell", "stats", scopes, begin, begin, end)
+	claims = permission.NewToken(accessURI, "connect", "stats", scopes, begin, begin, end)
 	statsToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	statsBearer, err := statsToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
 
 	stats := reconws.New()
-	go stats.ReconnectAuth(ctx, shellaccessURI+"/shell/stats", statsBearer)
+	go stats.ReconnectAuth(ctx, accessURI+base_path+"/connect/stats", statsBearer)
 
-	cmd, err := json.Marshal(shellbar.StatsCommand{Command: "update"})
+	cmd, err := json.Marshal(crossbar.StatsCommand{Command: "update"})
 
 	assert.NoError(t, err)
 
@@ -244,7 +239,7 @@ func TestShellHost(t *testing.T) {
 	select {
 	case msg := <-stats.In:
 
-		var reports []*shellbar.ClientReport
+		var reports []*crossbar.ClientReport
 
 		err := json.Unmarshal(msg.Data, &reports)
 
@@ -287,9 +282,5 @@ func TestShellHost(t *testing.T) {
 	}
 
 	// ================================== Teardown  ===============================================
-	cancel()
-	time.Sleep(timeout)
-	close(closed)
-	wg.Wait()
 
 }
