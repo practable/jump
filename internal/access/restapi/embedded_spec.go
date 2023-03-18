@@ -18,9 +18,6 @@ var (
 
 func init() {
 	SwaggerJSON = json.RawMessage([]byte(`{
-  "consumes": [
-    "application/json"
-  ],
   "produces": [
     "application/json"
   ],
@@ -29,42 +26,43 @@ func init() {
   ],
   "swagger": "2.0",
   "info": {
-    "description": "API for accessing github.com/timdrysdale/crossbar websocket relay",
-    "title": "Crossbar",
+    "description": "API for accessing github.com/practable/jump websocket ssh relay",
+    "title": "access",
     "contact": {
       "name": "Timothy Drysdale",
-      "url": "https://github.com/timdrysdale",
+      "url": "https://github.com/practable",
       "email": "timothy.d.drysdale@gmail.com"
     },
-    "version": "0.3"
+    "version": "0.4"
   },
   "host": "localhost",
-  "basePath": "/",
+  "basePath": "/api/v1",
   "paths": {
-    "/session/{session_id}": {
+    "/connect/{host_id}": {
       "post": {
         "security": [
           {
             "Bearer": []
           }
         ],
-        "description": "access the specified session",
+        "description": "Request a websocket connection for host specified by host_id.",
         "produces": [
           "application/json"
         ],
-        "summary": "session",
-        "operationId": "session",
+        "summary": "request a websocket connection for host specified by host_id",
+        "operationId": "connect",
         "parameters": [
           {
             "type": "string",
-            "description": "Session identification code",
-            "name": "session_id",
+            "description": "Jump host identification code",
+            "name": "host_id",
             "in": "path",
             "required": true
           }
         ],
         "responses": {
           "200": {
+            "description": "",
             "schema": {
               "type": "object",
               "properties": {
@@ -74,15 +72,46 @@ func init() {
               }
             },
             "examples": {
-              "text/plain": {
-                "code": "b142eb22-1f16-4af1-ba14-e70a7afcbcc2"
+              "application/json": {
+                "uri": "wss://example.com/jump/connect/host123?code=8b4f378e-6edc-42d5-b497-0f6d32ad8be3"
               }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "schema": {
+              "$ref": "#/definitions/Error"
             }
           },
           "401": {
             "description": "Unauthorized",
-            "schema": {}
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
           }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
         }
       }
     }
@@ -96,9 +125,6 @@ func init() {
   }
 }`))
 	FlatSwaggerJSON = json.RawMessage([]byte(`{
-  "consumes": [
-    "application/json"
-  ],
   "produces": [
     "application/json"
   ],
@@ -107,42 +133,43 @@ func init() {
   ],
   "swagger": "2.0",
   "info": {
-    "description": "API for accessing github.com/timdrysdale/crossbar websocket relay",
-    "title": "Crossbar",
+    "description": "API for accessing github.com/practable/jump websocket ssh relay",
+    "title": "access",
     "contact": {
       "name": "Timothy Drysdale",
-      "url": "https://github.com/timdrysdale",
+      "url": "https://github.com/practable",
       "email": "timothy.d.drysdale@gmail.com"
     },
-    "version": "0.3"
+    "version": "0.4"
   },
   "host": "localhost",
-  "basePath": "/",
+  "basePath": "/api/v1",
   "paths": {
-    "/session/{session_id}": {
+    "/connect/{host_id}": {
       "post": {
         "security": [
           {
             "Bearer": []
           }
         ],
-        "description": "access the specified session",
+        "description": "Request a websocket connection for host specified by host_id.",
         "produces": [
           "application/json"
         ],
-        "summary": "session",
-        "operationId": "session",
+        "summary": "request a websocket connection for host specified by host_id",
+        "operationId": "connect",
         "parameters": [
           {
             "type": "string",
-            "description": "Session identification code",
-            "name": "session_id",
+            "description": "Jump host identification code",
+            "name": "host_id",
             "in": "path",
             "required": true
           }
         ],
         "responses": {
           "200": {
+            "description": "",
             "schema": {
               "type": "object",
               "properties": {
@@ -152,15 +179,46 @@ func init() {
               }
             },
             "examples": {
-              "text/plain": {
-                "code": "b142eb22-1f16-4af1-ba14-e70a7afcbcc2"
+              "application/json": {
+                "uri": "wss://example.com/jump/connect/host123?code=8b4f378e-6edc-42d5-b497-0f6d32ad8be3"
               }
+            }
+          },
+          "400": {
+            "description": "BadRequest",
+            "schema": {
+              "$ref": "#/definitions/Error"
             }
           },
           "401": {
             "description": "Unauthorized",
-            "schema": {}
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "500": {
+            "description": "Internal Error",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
           }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
         }
       }
     }

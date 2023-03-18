@@ -42,8 +42,8 @@ func NewAccessAPI(spec *loads.Document) *AccessAPI {
 
 		JSONProducer: runtime.JSONProducer(),
 
-		SessionHandler: SessionHandlerFunc(func(params SessionParams, principal interface{}) middleware.Responder {
-			return middleware.NotImplemented("operation Session has not yet been implemented")
+		ConnectHandler: ConnectHandlerFunc(func(params ConnectParams, principal interface{}) middleware.Responder {
+			return middleware.NotImplemented("operation Connect has not yet been implemented")
 		}),
 
 		// Applies when the "Authorization" header is set
@@ -55,7 +55,7 @@ func NewAccessAPI(spec *loads.Document) *AccessAPI {
 	}
 }
 
-/*AccessAPI API for accessing github.com/timdrysdale/crossbar websocket relay */
+/*AccessAPI API for accessing github.com/practable/jump websocket ssh relay */
 type AccessAPI struct {
 	spec            *loads.Document
 	context         *middleware.Context
@@ -71,9 +71,11 @@ type AccessAPI struct {
 	// BasicAuthenticator generates a runtime.Authenticator from the supplied basic auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	BasicAuthenticator func(security.UserPassAuthentication) runtime.Authenticator
+
 	// APIKeyAuthenticator generates a runtime.Authenticator from the supplied token auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	APIKeyAuthenticator func(string, string, security.TokenAuthentication) runtime.Authenticator
+
 	// BearerAuthenticator generates a runtime.Authenticator from the supplied bearer token auth function.
 	// It has a default implementation in the security package, however you can replace it for your particular usage.
 	BearerAuthenticator func(string, security.ScopedTokenAuthentication) runtime.Authenticator
@@ -93,8 +95,9 @@ type AccessAPI struct {
 	// APIAuthorizer provides access control (ACL/RBAC/ABAC) by providing access to the request and authenticated principal
 	APIAuthorizer runtime.Authorizer
 
-	// SessionHandler sets the operation handler for the session operation
-	SessionHandler SessionHandler
+	// ConnectHandler sets the operation handler for the connect operation
+	ConnectHandler ConnectHandler
+
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
 	ServeError func(http.ResponseWriter, *http.Request, error)
@@ -175,8 +178,8 @@ func (o *AccessAPI) Validate() error {
 		unregistered = append(unregistered, "AuthorizationAuth")
 	}
 
-	if o.SessionHandler == nil {
-		unregistered = append(unregistered, "SessionHandler")
+	if o.ConnectHandler == nil {
+		unregistered = append(unregistered, "ConnectHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -278,7 +281,7 @@ func (o *AccessAPI) initHandlerCache() {
 	if o.handlers["POST"] == nil {
 		o.handlers["POST"] = make(map[string]http.Handler)
 	}
-	o.handlers["POST"]["/session/{session_id}"] = NewSession(o.context, o.SessionHandler)
+	o.handlers["POST"]["/connect/{host_id}"] = NewConnect(o.context, o.ConnectHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP

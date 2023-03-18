@@ -13,51 +13,51 @@ import (
 	"github.com/go-openapi/strfmt"
 )
 
-// NewSessionParams creates a new SessionParams object
-// no default values defined in spec.
-func NewSessionParams() SessionParams {
+// NewConnectParams creates a new ConnectParams object
+//
+// There are no default values defined in the spec.
+func NewConnectParams() ConnectParams {
 
-	return SessionParams{}
+	return ConnectParams{}
 }
 
-// SessionParams contains all the bound params for the session operation
+// ConnectParams contains all the bound params for the connect operation
 // typically these are obtained from a http.Request
 //
-// swagger:parameters session
-type SessionParams struct {
+// swagger:parameters connect
+type ConnectParams struct {
 
 	// HTTP Request Object
 	HTTPRequest *http.Request `json:"-"`
 
-	/*Session identification code
+	/*Jump host identification code
 	  Required: true
 	  In: path
 	*/
-	SessionID string
+	HostID string
 }
 
 // BindRequest both binds and validates a request, it assumes that complex things implement a Validatable(strfmt.Registry) error interface
 // for simple values it will use straight method calls.
 //
-// To ensure default values, the struct must have been initialized with NewSessionParams() beforehand.
-func (o *SessionParams) BindRequest(r *http.Request, route *middleware.MatchedRoute) error {
+// To ensure default values, the struct must have been initialized with NewConnectParams() beforehand.
+func (o *ConnectParams) BindRequest(r *http.Request, route *middleware.MatchedRoute) error {
 	var res []error
 
 	o.HTTPRequest = r
 
-	rSessionID, rhkSessionID, _ := route.Params.GetOK("session_id")
-	if err := o.bindSessionID(rSessionID, rhkSessionID, route.Formats); err != nil {
+	rHostID, rhkHostID, _ := route.Params.GetOK("host_id")
+	if err := o.bindHostID(rHostID, rhkHostID, route.Formats); err != nil {
 		res = append(res, err)
 	}
-
 	if len(res) > 0 {
 		return errors.CompositeValidationError(res...)
 	}
 	return nil
 }
 
-// bindSessionID binds and validates parameter SessionID from path.
-func (o *SessionParams) bindSessionID(rawData []string, hasKey bool, formats strfmt.Registry) error {
+// bindHostID binds and validates parameter HostID from path.
+func (o *ConnectParams) bindHostID(rawData []string, hasKey bool, formats strfmt.Registry) error {
 	var raw string
 	if len(rawData) > 0 {
 		raw = rawData[len(rawData)-1]
@@ -65,8 +65,7 @@ func (o *SessionParams) bindSessionID(rawData []string, hasKey bool, formats str
 
 	// Required: true
 	// Parameter is provided by construction from the route
-
-	o.SessionID = raw
+	o.HostID = raw
 
 	return nil
 }
