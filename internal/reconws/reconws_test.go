@@ -82,7 +82,7 @@ func TestBackoff(t *testing.T) {
 func TestReconnectAuth(t *testing.T) {
 
 	// Setup logging
-	debug := true
+	debug := false
 
 	if debug {
 		log.SetLevel(log.TraceLevel)

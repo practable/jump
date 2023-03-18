@@ -113,10 +113,11 @@ func (r *ReconWs) Reconnect(ctx context.Context, url string) {
 			err := r.Dial(dialCtx, url)
 			cancel()
 
-			log.WithField("error", err).Debug("Dial finished")
 			if err == nil {
+				log.Debug("Dial succeeded")
 				boff.Reset()
 			} else {
+				log.WithField("err", err.Error()).Error("Dial failed")
 				time.Sleep(boff.Duration())
 			}
 			//TODO immediate return if cancelled....
@@ -164,7 +165,7 @@ func (r *ReconWs) ReconnectAuth(ctx context.Context, url, token string) {
 
 			req, err := http.NewRequest("POST", url, nil)
 			if err != nil {
-				log.WithField("error", err).Warnf("%s: failed to create request", id)
+				log.WithField("err", err.Error()).Warnf("%s: failed to create request", id)
 				continue
 			}
 
@@ -173,14 +174,14 @@ func (r *ReconWs) ReconnectAuth(ctx context.Context, url, token string) {
 			resp, err := client.Do(req)
 
 			if err != nil {
-				log.WithField("error", err).Warnf("%s: failed request to access endpoint", id)
+				log.WithField("err", err.Error()).Warnf("%s: failed request to access endpoint", id)
 				continue
 			}
 
 			body, err := ioutil.ReadAll(resp.Body)
 
 			if err != nil {
-				log.WithField("error", err).Warnf("%s: failed reading access response body", id)
+				log.WithField("err", err.Error()).Warnf("%s: failed reading access response body", id)
 				continue
 			}
 
@@ -190,7 +191,7 @@ func (r *ReconWs) ReconnectAuth(ctx context.Context, url, token string) {
 
 			if err != nil {
 
-				log.WithFields(log.Fields{"error": err, "body": string(body)}).Debugf("%s: failed marshalling access response into struct", id)
+				log.WithFields(log.Fields{"err": err.Error(), "body": string(body)}).Debugf("%s: failed marshalling access response into struct", id)
 				continue
 			}
 
@@ -206,7 +207,7 @@ func (r *ReconWs) ReconnectAuth(ctx context.Context, url, token string) {
 				waitBeforeDial = false
 				log.Debugf("%s: dial finished successfully, resetting timeout to zero", id)
 			} else {
-				log.WithField("error", err).Debugf("%s: Dial finished with error, increasing timeout", id)
+				log.WithField("err", err.Error()).Debugf("%s: Dial finished with error, increasing timeout", id)
 			}
 			//TODO immediate return if cancelled....?
 		}
@@ -255,7 +256,7 @@ func (r *ReconWs) Dial(ctx context.Context, urlStr string) error {
 	//	defer c.Close()
 
 	if err != nil {
-		log.WithField("error", err).Errorf("%s: dialing error because %s", id, err.Error())
+		log.WithField("err", err.Error()).Errorf("%s: dialing error because %s", id, err.Error())
 		return err
 	}
 
@@ -282,7 +283,7 @@ func (r *ReconWs) Dial(ctx context.Context, urlStr string) error {
 			// because we've been instructed to exit
 			// log as info since we expect an error here on a normal exit
 			if err != nil {
-				log.WithField("error", err).Infof("%s: error reading from conn; closing", id)
+				log.WithField("err", err.Error()).Infof("%s: error reading from conn; closing", id)
 				close(readClosed)
 				break LOOP
 			}
@@ -312,7 +313,7 @@ LOOPWRITING:
 
 			err := c.WriteMessage(msg.Type, msg.Data)
 			if err != nil {
-				log.WithField("error", err).Infof("%s: error writing to conn; closing", id)
+				log.WithField("err", err.Error()).Infof("%s: error writing to conn; closing", id)
 				break LOOPWRITING
 			}
 			log.Debugf("%s: sent %d-byte message", id, len(msg.Data))
@@ -326,7 +327,7 @@ LOOPWRITING:
 			// Cleanly close the connection by sending a close message
 			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
-				log.WithField("error", err).Infof("%s: error sending close message; closing", id)
+				log.WithField("err", err.Error()).Infof("%s: error sending close message; closing", id)
 			} else {
 				log.Infof("%s: connection closed", id)
 			}
