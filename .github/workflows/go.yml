@@ -53,4 +53,4 @@ jobs:
       # Updating go report card for master branch only
       - name: GoReportCard
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        run: curl --fail --request POST "https://goreportcard.com/checks" --data "repo=github.com/timdrysdale/relay"
+        run: curl --fail --request POST "https://goreportcard.com/checks" --data "repo=github.com/practable/jump"
