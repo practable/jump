@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/practable/jump/internal/client"
+	"github.com/practable/jump/internal/shim"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -46,13 +46,13 @@ type Statistics struct {
 }
 
 type Status struct {
-	c      *client.Client
+	c      *shim.Client
 	Status chan []Report
 }
 
 func New() *Status {
 	return &Status{
-		c:      client.New(),
+		c:      shim.NewClient(),
 		Status: make(chan []Report),
 	}
 }

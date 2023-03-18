@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/phayes/freeport"
 	"github.com/practable/jump/internal/permission"
-	"github.com/practable/jump/internal/shellrelay"
+	"github.com/practable/jump/internal/relay"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -67,9 +66,6 @@ func TestStatus(t *testing.T) {
 	}
 
 	// Setup relay on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
 	ports, err := freeport.GetFreePorts(2)
 	assert.NoError(t, err)
 
@@ -80,20 +76,22 @@ func TestStatus(t *testing.T) {
 	target := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
 
 	secret := "testsecret"
+	base_path := "/api/v1"
 
-	wg.Add(1)
-
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		time.Sleep(2 * time.Second)
-		config := shellrelay.Config{
-			AccessPort: accessPort,
-			RelayPort:  relayPort,
-			Audience:   audience,
-			Secret:     secret,
-			Target:     target,
-			StatsEvery: time.Duration(time.Second),
+		config := relay.Config{
+			AccessPort:     accessPort,
+			RelayPort:      relayPort,
+			Audience:       audience,
+			ConnectionType: "connect",
+			Secret:         secret,
+			Target:         target,
+			StatsEvery:     time.Duration(time.Second),
 		}
-		go shellrelay.Relay(closed, &wg, config)
+		go relay.Run(ctx, config)
 	}()
 
 	// we sleep before starting the relay to help avoid issues with multiple
@@ -107,8 +105,6 @@ func TestStatus(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	var claims permission.Token
 
 	start := jwt.NewNumericDate(time.Now().Add(-time.Second))
@@ -118,7 +114,7 @@ func TestStatus(t *testing.T) {
 	claims.ExpiresAt = afterTTL
 	claims.Audience = jwt.ClaimStrings{audience}
 	claims.Topic = "stats"
-	claims.ConnectionType = "shell"
+	claims.ConnectionType = "connect"
 	claims.Scopes = []string{"stats"}
 
 	rawtoken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -129,7 +125,7 @@ func TestStatus(t *testing.T) {
 	assert.NoError(t, err)
 
 	s := New()
-	to := audience + "/shell/stats"
+	to := audience + base_path + "/connect/stats"
 	go s.Connect(ctx, to, token)
 
 	select {
@@ -156,10 +152,5 @@ func TestStatus(t *testing.T) {
 		assert.Equal(t, te, ta)
 
 	}
-
-	cancel()
-	// Shutdown the Relay and check no messages are being sent
-	close(closed)
-	wg.Wait()
 
 }
