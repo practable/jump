@@ -135,7 +135,11 @@ func Host(ctx context.Context, listen int, target string) {
 // pass websocket.Conn with pointer due to mutex
 // Use of NextReader/Writer modified from https://github.com/hazaelsan/ssh-relay/blob/master/session/corprelay/corprelay.go
 func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.Conn) {
-
+	id := "internal/ws/PipeBinaryIgnoreText"
+	if wconn == nil {
+		log.Errorf("%s nil websocket.Conn", id)
+		return
+	}
 	// write from wconn to tconn
 	go func() {
 
@@ -155,13 +159,13 @@ func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.
 					return err
 				}
 
-				log.Tracef("internal/ws.Host(ws->tcp): read %v bytes", n)
+				log.Tracef("(ws->tcp): read %v bytes", n)
 
 				switch t {
 				case websocket.BinaryMessage:
 					// TODO what does this conversion achieve?
 					nn, err := tconn.Write([]byte(b.String()))
-					log.Tracef("internal/ws.Host(ws->tcp): wrote %v bytes", nn)
+					log.Tracef("(ws->tcp): wrote %v bytes", nn)
 					return err
 				case websocket.TextMessage: //non-SSH message (none implemented as yet anyway)
 					log.WithField("msg", b.String()).Info("Ignoring TEXT")
@@ -172,7 +176,7 @@ func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.
 				return nil
 			}()
 			if err != nil {
-				log.WithField("err", err.Error).Error("internal/ws.Host(ws->tcp)")
+				log.WithField("err", err.Error).Error(id)
 				return
 			}
 		}
