@@ -3,7 +3,7 @@ for connecting ssh connections transported
 over websocket
 */
 
-package shellbar
+package crossbar
 
 import (
 	"context"
@@ -210,8 +210,8 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-// Shellbar runs ssh relay with the given configuration
-func Shellbar(ctx context.Context, config Config) {
+// Run ssh relay with the given configuration
+func Run(ctx context.Context, config Config) {
 
 	hub := newHub()
 	config.hub = hub //needed by serveWS and statsClient

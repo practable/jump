@@ -1,4 +1,4 @@
-package shellbar
+package crossbar
 
 import (
 	"bufio"
@@ -51,7 +51,7 @@ func MakeTestToken(audience, connectionType, topic string, scopes []string, life
 	return permission.NewToken(audience, connectionType, topic, scopes, begin, begin, end)
 }
 
-func TestShellbar(t *testing.T) {
+func TestRun(t *testing.T) {
 
 	// Renew the mux to avoid multiple registrations error
 	http.DefaultServeMux = new(http.ServeMux)
@@ -76,7 +76,7 @@ func TestShellbar(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go Shellbar(ctx, config)
+	go Run(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
 
@@ -444,7 +444,7 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go Shellbar(ctx, config)
+	go Run(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
 
@@ -590,7 +590,7 @@ func testPacketBoundariesAsynchronous(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go Shellbar(ctx, config)
+	go Run(ctx, config)
 	// safety margin to get shellbar running
 	time.Sleep(time.Second)
 
