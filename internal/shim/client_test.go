@@ -1,4 +1,4 @@
-package client
+package shim
 
 import (
 	"bufio"
@@ -6,14 +6,13 @@ import (
 	"context"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/phayes/freeport"
 	"github.com/practable/jump/internal/permission"
-	"github.com/practable/jump/internal/shellrelay"
+	"github.com/practable/jump/internal/relay"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -36,7 +35,7 @@ func makeTestToken(audience, secret string, ttl int64) (string, error) {
 	claims.ExpiresAt = afterTTL
 	claims.Audience = jwt.ClaimStrings{audience}
 	claims.Topic = "stats"
-	claims.ConnectionType = "shell"
+	claims.ConnectionType = "connect"
 	claims.Scopes = []string{"stats"}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -49,7 +48,6 @@ func TestClientConnect(t *testing.T) {
 
 	// Setup logging
 	debug := false
-
 	if debug {
 		log.SetLevel(log.TraceLevel)
 		log.SetFormatter(&logrus.TextFormatter{FullTimestamp: true, DisableColors: true})
@@ -61,10 +59,9 @@ func TestClientConnect(t *testing.T) {
 		log.SetOutput(logignore)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	// Setup relay on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
 	ports, err := freeport.GetFreePorts(2)
 	assert.NoError(t, err)
 
@@ -73,22 +70,22 @@ func TestClientConnect(t *testing.T) {
 
 	audience := "http://[::]:" + strconv.Itoa(accessPort)
 	target := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
+	base_path := "/api/v1"
 
 	secret := "testsecret"
 
-	wg.Add(1)
-
 	go func() {
 		time.Sleep(2 * time.Second)
-		config := shellrelay.Config{
-			AccessPort: accessPort,
-			RelayPort:  relayPort,
-			Audience:   audience,
-			Secret:     secret,
-			Target:     target,
-			StatsEvery: time.Duration(time.Second),
+		config := relay.Config{
+			AccessPort:     accessPort,
+			RelayPort:      relayPort,
+			Audience:       audience,
+			ConnectionType: "connect",
+			Secret:         secret,
+			Target:         target,
+			StatsEvery:     time.Duration(time.Second),
 		}
-		go shellrelay.Relay(closed, &wg, config)
+		go relay.Run(ctx, config)
 	}()
 
 	// we sleep before starting the relay to help avoid issues with multiple
@@ -100,15 +97,12 @@ func TestClientConnect(t *testing.T) {
 	assert.NoError(t, err)
 
 	// now clients connect using their uris...
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	to := audience + "/shell/stats"
+	to := audience + base_path + "/connect/stats"
 
 	// wait until relay has been up for about one second
 	time.Sleep(3 * time.Second)
 
-	c0 := New()
+	c0 := NewClient()
 	go c0.Connect(ctx, to, token)
 
 	select {
@@ -117,10 +111,5 @@ func TestClientConnect(t *testing.T) {
 	case <-c0.Receive:
 		//should get a stats message every second
 	}
-
-	cancel()
-	// Shutdown the Relay and check no messages are being sent
-	close(closed)
-	wg.Wait()
 
 }

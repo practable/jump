@@ -5,7 +5,7 @@
    internal API, as this may change later.
 */
 
-package client
+package shim
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type Client struct {
 	Send    chan Message
 }
 
-func New() *Client {
+func NewClient() *Client {
 	return &Client{
 		r:       reconws.New(),
 		Receive: make(chan Message),
