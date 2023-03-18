@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/ory/viper"
-	"github.com/practable/jump/internal/shellaccess"
+	"github.com/practable/jump/internal/access"
 	"github.com/spf13/cobra"
 )
 
@@ -105,7 +105,7 @@ bearer=$(jump token)
 		nbf := iat
 		exp := iat + lifetime
 
-		bearer, err := shellaccess.Token(audience,
+		bearer, err := access.Token(audience,
 			connectionType,
 			topic,
 			secret,

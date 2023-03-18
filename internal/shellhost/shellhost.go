@@ -15,10 +15,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
+	"github.com/practable/jump/internal/crossbar"
 	"github.com/practable/jump/internal/reconws"
-	"github.com/practable/jump/internal/shellbar"
 	"github.com/practable/jump/internal/tcpconnect"
+	log "github.com/sirupsen/logrus"
 )
 
 // Host connects to remote relay, and makes a new connection
@@ -34,7 +34,7 @@ func Host(ctx context.Context, local, remote, token string) {
 	go manager.ReconnectAuth(ctx, remote, token)
 
 	connections := make(map[string]context.CancelFunc)
-	var ca shellbar.ConnectionAction
+	var ca crossbar.ConnectionAction
 	log.Info("shellhost starting")
 	for {
 		select {

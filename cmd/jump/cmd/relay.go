@@ -17,17 +17,17 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ory/viper"
-	"github.com/practable/jump/internal/shellrelay"
+	"github.com/practable/jump/internal/relay"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -208,9 +208,7 @@ websocket connections are reverse proxied to the correct instance).
 			}()
 		}
 
-		var wg sync.WaitGroup
-
-		closed := make(chan struct{})
+		ctx, cancel := context.WithCancel(context.Background())
 
 		c := make(chan os.Signal, 1)
 
@@ -218,27 +216,25 @@ websocket connections are reverse proxied to the correct instance).
 
 		go func() {
 			for range c {
-				close(closed)
-				wg.Wait()
-				os.Exit(0)
+				cancel()
 			}
 		}()
 
-		wg.Add(1)
-
-		config := shellrelay.Config{
-			AccessPort: portAccess,
-			Audience:   audience,
-			BufferSize: bufferSize,
-			RelayPort:  portRelay,
-			Secret:     secret,
-			StatsEvery: statsEvery,
-			Target:     URL,
+		config := relay.Config{
+			AccessPort:     portAccess,
+			Audience:       audience,
+			ConnectionType: "connect", //set by api/access.yml
+			BufferSize:     bufferSize,
+			RelayPort:      portRelay,
+			Secret:         secret,
+			StatsEvery:     statsEvery,
+			Target:         URL,
 		}
 
-		go shellrelay.Relay(closed, &wg, config)
+		go relay.Run(ctx, config)
 
-		wg.Wait()
+		<-ctx.Done()
+		os.Exit(0)
 
 	},
 }
