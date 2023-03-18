@@ -24,7 +24,7 @@ import (
 	"strconv"
 
 	"github.com/ory/viper"
-	"github.com/practable/jump/internal/shellhost"
+	"github.com/practable/jump/internal/host"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -95,7 +95,7 @@ jump host
 
 		local := "localhost:" + strconv.Itoa(localPort)
 
-		go shellhost.Host(ctx, local, access, token)
+		go host.Run(ctx, local, access, token)
 
 		<-ctx.Done() //unlikely to exit this way, but block all the same
 		os.Exit(0)

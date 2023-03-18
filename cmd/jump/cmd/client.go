@@ -23,7 +23,7 @@ import (
 	"os/signal"
 
 	"github.com/ory/viper"
-	"github.com/practable/jump/internal/shellclient"
+	"github.com/practable/jump/internal/client"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -94,7 +94,7 @@ jump client
 			}
 		}()
 
-		go shellclient.Client(ctx, localPort, relaySession, token)
+		go client.Run(ctx, localPort, relaySession, token)
 
 		<-ctx.Done() //unlikely to exit this way, but block all the same
 		os.Exit(0)
