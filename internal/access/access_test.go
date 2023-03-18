@@ -3,13 +3,13 @@ package access
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -65,9 +65,6 @@ func TestAPI(t *testing.T) {
 		log.SetOutput(logignore)
 	}
 
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
-
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		log.Fatal(err)
@@ -80,8 +77,6 @@ func TestAPI(t *testing.T) {
 	cs := ttlcode.NewDefaultCodeStore()
 	target := "wss://relay.example.io"
 
-	wg.Add(1)
-
 	config := Config{
 		CodeStore: cs,
 		Listen:    port,
@@ -90,7 +85,9 @@ func TestAPI(t *testing.T) {
 		Target:    target,
 	}
 
-	go API(closed, &wg, config) //port, audience, secret, target, cs)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go API(ctx, config) //port, audience, secret, target, cs)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -231,7 +228,4 @@ func TestAPI(t *testing.T) {
 
 	assert.NotEqual(t, uniqueConnection0, matches[1])
 
-	// End tests
-	close(closed)
-	wg.Wait()
 }

@@ -22,7 +22,7 @@ type Config struct {
 }
 
 // Relay runs a shellrelay instance that relays ssh connections between shellclient and shellhost
-func Relay(ctx context.Context, config Config) {
+func Run(ctx context.Context, config Config) {
 
 	cs := ttlcode.NewDefaultCodeStore()
 
@@ -36,7 +36,7 @@ func Relay(ctx context.Context, config Config) {
 		config.StatsEvery = time.Duration(time.Second) //we have to balance fast testing vs high CPU load in production if too short
 	}
 
-	sc := bar.Config{
+	sc := crossbar.Config{
 		Audience:       config.Target,
 		BufferSize:     config.BufferSize,
 		CodeStore:      cs,
@@ -45,7 +45,7 @@ func Relay(ctx context.Context, config Config) {
 		StatsEvery:     config.StatsEvery,
 	}
 
-	go crossbar.CrossBar(ctx, sc)
+	go crossbar.Run(ctx, sc)
 
 	ac := access.Config{
 		Audience:  config.Audience,
@@ -55,7 +55,7 @@ func Relay(ctx context.Context, config Config) {
 		Target:    config.Target,
 	}
 
-	go access.API(context, ac)
+	go access.API(ctx, ac)
 
 	<-ctx.Done()
 	log.Trace("Relay done")

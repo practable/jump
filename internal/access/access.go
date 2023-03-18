@@ -16,10 +16,10 @@
 package access
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"regexp"
-	"sync"
 	"time"
 
 	"github.com/go-openapi/loads"
@@ -81,7 +81,7 @@ func getPrefixFromPath(path string) string {
 // @secret- HMAC shared secret which incoming tokens will be signed with
 // @cs - pointer to the CodeStore this API shares with the shellbar websocket relay
 // @options - for future backwards compatibility (no options currently available)
-func API(closed <-chan struct{}, wg *sync.WaitGroup, config Config) { // port int, host, secret, target string, cs *ttlcode.CodeStore) {
+func API(ctx context.Context, config Config) { // port int, host, secret, target string, cs *ttlcode.CodeStore) {
 
 	swaggerSpec, err := loads.Analyzed(restapi.SwaggerJSON, "")
 	if err != nil {
@@ -233,7 +233,7 @@ func API(closed <-chan struct{}, wg *sync.WaitGroup, config Config) { // port in
 	})
 
 	go func() {
-		<-closed
+		<-ctx.Done()
 		if err := server.Shutdown(); err != nil {
 			log.Fatalln(err)
 		}
@@ -245,7 +245,7 @@ func API(closed <-chan struct{}, wg *sync.WaitGroup, config Config) { // port in
 		log.Fatalln(err)
 	}
 
-	wg.Done()
+	<-ctx.Done()
 
 }
 

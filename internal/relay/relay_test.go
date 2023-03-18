@@ -1,4 +1,4 @@
-package shellrelay
+package relay
 
 import (
 	"bufio"
@@ -8,16 +8,15 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
+	"github.com/practable/jump/internal/crossbar"
 	"github.com/practable/jump/internal/permission"
 	"github.com/practable/jump/internal/reconws"
-	"github.com/practable/jump/internal/shellbar"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -40,8 +39,8 @@ func TestRelay(t *testing.T) {
 	}
 
 	// Setup relay on local (free) port
-	closed := make(chan struct{})
-	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	ports, err := freeport.GetFreePorts(2)
 	assert.NoError(t, err)
@@ -51,23 +50,23 @@ func TestRelay(t *testing.T) {
 
 	audience := "http://[::]:" + strconv.Itoa(accessPort)
 	target := "ws://127.0.0.1:" + strconv.Itoa(relayPort)
+	base_path := "/api/v1"
 
 	fmt.Printf("audience:%s\n", audience)
 	fmt.Printf("target:%s\n", target)
 
 	secret := "testsecret"
 
-	wg.Add(1)
-
 	config := Config{
-		AccessPort: accessPort,
-		Audience:   audience,
-		RelayPort:  relayPort,
-		Secret:     secret,
-		Target:     target,
+		AccessPort:     accessPort,
+		Audience:       audience,
+		ConnectionType: "connect",
+		RelayPort:      relayPort,
+		Secret:         secret,
+		Target:         target,
 	}
 
-	go Relay(closed, &wg, config)
+	go Run(ctx, config)
 
 	time.Sleep(time.Second) // big safety margin to get crossbar running
 
@@ -85,7 +84,7 @@ func TestRelay(t *testing.T) {
 
 	claims.Audience = jwt.ClaimStrings{audience}
 	claims.Topic = "123"
-	claims.ConnectionType = "shell"
+	claims.ConnectionType = "connect"
 	claims.Scopes = []string{"host"}
 
 	hostToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -93,9 +92,7 @@ func TestRelay(t *testing.T) {
 	// Sign and get the complete encoded token as a string using the secret
 	hostBearer, err := hostToken.SignedString([]byte(secret))
 	assert.NoError(t, err)
-	hostURI := audience + "/shell/123"
-
-	ctx, cancel := context.WithCancel(context.Background())
+	hostURI := audience + base_path + "/connect/123"
 
 	h := reconws.New()
 	go h.ReconnectAuth(ctx, hostURI, hostBearer)
@@ -114,7 +111,7 @@ func TestRelay(t *testing.T) {
 
 	// wait for client connection message
 
-	var ca shellbar.ConnectionAction
+	var ca crossbar.ConnectionAction
 	select {
 	case msg, ok := <-h.In:
 		assert.True(t, ok)
@@ -206,11 +203,5 @@ func TestRelay(t *testing.T) {
 	case <-time.After(timeout):
 		t.Fatal("Timed out getting boo")
 	}
-
-	cancel()
-	// teardown relay
-
-	close(closed)
-	wg.Wait()
 
 }
