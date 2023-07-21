@@ -49,7 +49,7 @@ jump client
 		viper.AutomaticEnv()
 
 		viper.SetDefault("local_port", 8082)
-		viper.SetDefault("log_file", "/var/log/status/status.log")
+		viper.SetDefault("log_file", "~/tmp/jump-client.log")
 		viper.SetDefault("log_format", "json")
 		viper.SetDefault("log_level", "warn")
 		viper.SetDefault("session", "") // "" so we can check if provided
@@ -116,6 +116,14 @@ jump client
 				log.Infof("Failed to log to %s, logging to default stderr", logFile)
 			}
 		}
+
+		log.Infof("jump version: %s", versionString())
+		log.Infof("Log file: [%s]", logFile)
+		log.Infof("Log format: [%s]", logFormat)
+		log.Infof("Log level: [%s]", logLevel)
+		log.Infof("Port for local listening: [%d]", localPort)
+		log.Infof("Relay session: [%s]", relaySession)
+		log.Infof("Token length: [%d]", len(token))
 
 		ctx, cancel := context.WithCancel(context.Background())
 
