@@ -176,7 +176,7 @@ func PipeBinaryIgnoreText(ctx context.Context, tconn net.Conn, wconn *websocket.
 				return nil
 			}()
 			if err != nil {
-				log.WithField("err", err.Error).Error(id)
+				log.WithField("err", err.Error()).Error(id+" %s", err.Error())
 				return
 			}
 		}
