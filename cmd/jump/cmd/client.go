@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/ory/viper"
 	"github.com/practable/jump/internal/client"
@@ -36,7 +37,10 @@ var clientCmd = &cobra.Command{
 export JUMP_CLIENT_LOCAL_PORT=22
 export JUMP_CLIENT_RELAY_SESSION=https://access.example.io/jump/abc123
 export JUMP_CLIENT_TOKEN=ey...<snip>
-export JUMP_CLIENT_DEVELOPMENT=true
+export JUMP_CLIENT_LOG_LEVEL=warn
+export JUMP_CLIENT_LOG_FORMAT=json
+export JUMP_CLIENT_LOG_FILE=~/tmp/jump-client.log
+
 jump client
 `,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -45,39 +49,72 @@ jump client
 		viper.AutomaticEnv()
 
 		viper.SetDefault("local_port", 8082)
+		viper.SetDefault("log_file", "/var/log/status/status.log")
+		viper.SetDefault("log_format", "json")
+		viper.SetDefault("log_level", "warn")
+		viper.SetDefault("session", "") // "" so we can check if provided
+		viper.SetDefault("token", "")
+
 		localPort := viper.GetInt("local_port")
-
+		logFile := viper.GetString("log_file")
+		logFormat := viper.GetString("log_format")
+		logLevel := viper.GetString("log_level")
 		relaySession := viper.GetString("relay_session")
-
 		token := viper.GetString("token")
 
-		development := viper.GetBool("development")
-
-		if development {
-			// development environment
-			fmt.Println("Development mode - logging output to stdout")
-			fmt.Printf("Local port: %d for %s with %d-byte token\n", localPort, relaySession, len(token))
-			log.SetFormatter(&log.TextFormatter{})
-			log.SetLevel(log.InfoLevel)
-			log.SetOutput(os.Stdout)
-
-		} else {
-
-			//production environment
-			log.SetFormatter(&log.JSONFormatter{})
-			log.SetLevel(log.WarnLevel)
-
-		}
-
 		// check inputs
-
 		if relaySession == "" {
-			fmt.Println("JUMP_CLIENT_RELAYSESSION not set")
+			fmt.Println("JUMP_CLIENT_RELAY_SESSION not set")
 			os.Exit(1)
 		}
 		if token == "" {
 			fmt.Println("JUMP_CLIENT_TOKEN not set")
 			os.Exit(1)
+		}
+
+		// set up logging
+		switch strings.ToLower(logLevel) {
+		case "trace":
+			log.SetLevel(log.TraceLevel)
+		case "debug":
+			log.SetLevel(log.DebugLevel)
+		case "info":
+			log.SetLevel(log.InfoLevel)
+		case "warn":
+			log.SetLevel(log.WarnLevel)
+		case "error":
+			log.SetLevel(log.ErrorLevel)
+		case "fatal":
+			log.SetLevel(log.FatalLevel)
+		case "panic":
+			log.SetLevel(log.PanicLevel)
+		default:
+			fmt.Println("JUMP_CLIENT_LOG_LEVEL can be trace, debug, info, warn, error, fatal or panic but not " + logLevel)
+			os.Exit(1)
+		}
+
+		switch strings.ToLower(logFormat) {
+		case "json":
+			log.SetFormatter(&log.JSONFormatter{})
+		case "text":
+			log.SetFormatter(&log.TextFormatter{})
+		default:
+			fmt.Println("JUMP_CLIENT_LOG_FORMAT can be json or text but not " + logLevel)
+			os.Exit(1)
+		}
+
+		if strings.ToLower(logFile) == "stdout" {
+
+			log.SetOutput(os.Stdout) //
+
+		} else {
+
+			file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err == nil {
+				log.SetOutput(file)
+			} else {
+				log.Infof("Failed to log to %s, logging to default stderr", logFile)
+			}
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
