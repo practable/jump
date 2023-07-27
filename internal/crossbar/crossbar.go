@@ -171,6 +171,8 @@ type ClientReport struct {
 
 	RemoteAddr string `json:"remote_address"`
 
+	Scopes []string `json:"scopes"`
+
 	Statistics ReportStats `json:"statistcs"`
 
 	Topic string `json:"topic"`
@@ -792,6 +794,7 @@ func statsClient(ctx context.Context, config Config) {
 					ExpiresAt:   string(ea),
 					RemoteAddr:  client.remoteAddr,
 					UserAgent:   client.userAgent,
+					Scopes:      client.scopes,
 					Statistics:  rs,
 				}
 
