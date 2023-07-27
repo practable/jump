@@ -150,6 +150,14 @@ func API(ctx context.Context, config Config) { // port int, host, secret, target
 		// &connection_id=134234234324
 		// in which case, distinguishing between host and client is irrelevant
 
+		// make scope map
+		sm := make(map[string]bool)
+
+		for _, v := range claims.Scopes {
+			sm[v] = true
+		}
+
+		// check scopes
 		hasClientScope := false
 		hasHostScope := false
 		hasStatsScope := false
@@ -200,6 +208,19 @@ func API(ctx context.Context, config Config) { // port int, host, secret, target
 			alertHost = true
 		}
 
+		// set read, write scopes as needed by crossbar
+		if hasClientScope || hasHostScope || hasStatsScope {
+			sm["read"] = true
+			sm["write"] = true // we may want later to be able to request an immediate report
+		}
+
+		// convert scopes to array of strings
+		ss := []string{}
+
+		for k := range sm {
+			ss = append(ss, k)
+		}
+
 		// Shellbar will take care of alerting the admin channel of
 		// the new connection for protocol timing reasons
 		// Because ssh is "server speaks first", we want to bridge
@@ -212,7 +233,7 @@ func API(ctx context.Context, config Config) { // port int, host, secret, target
 			config.Target,
 			claims.ConnectionType,
 			topic,
-			[]string{"read", "write"}, // sanitise out of abundance of caution - all use cases are read+write only
+			ss,
 			claims.IssuedAt.Unix(),
 			claims.NotBefore.Unix(),
 			claims.ExpiresAt.Unix(),
