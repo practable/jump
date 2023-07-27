@@ -451,7 +451,7 @@ func testPacketBoundariesSynchronous(t *testing.T) {
 	// construct host token & connect
 	ct := "shell"
 	session := "rst"
-	scopes := []string{"read", "write"} //host, client scopes are known only to access
+	scopes := []string{"read", "write"} // host, client scopes are known only to access
 
 	tokenHost := MakeTestToken(audience, ct, session, scopes, 30)
 	codeHost := cs.SubmitToken(tokenHost)

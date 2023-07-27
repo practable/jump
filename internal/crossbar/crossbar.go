@@ -59,6 +59,8 @@ type Client struct {
 
 	audience string
 
+	scopes []string
+
 	stats *stats
 
 	name string
@@ -623,6 +625,7 @@ func serveWS(ctx context.Context, config Config, w http.ResponseWriter, r *http.
 		name:           uuid.New().String(),
 		remoteAddr:     r.Header.Get("X-Forwarded-For"),
 		send:           make(chan message, config.BufferSize),
+		scopes:         token.Scopes,
 		stats:          stats,
 		topic:          topic + token.TopicSalt,
 		userAgent:      r.UserAgent(),
