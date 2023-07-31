@@ -31,6 +31,53 @@ This repo provides the `jump` command for relaying `ssh` connections, with the f
 0. `jump relay` runs in the cloud (to connect experiments and administrators)
 0. `jump client` runs on the administrators' systems to connect to the `shell relay` 
 
+## Status client
+
+The status client `pkg/status` is useful for obtaining status information from another golang service, as per the example below from [status](https://github.com/practable/status).
+```
+import (	
+   jc "github.com/practable/jump/pkg/status"
+)
+
+<snip>
+			iat := time.Now()
+			nbf := time.Now()
+			exp := time.Now().Add(s.Config.ReconnectJumpEvery)
+			log.WithFields(log.Fields{"iat": iat, "nbf": nbf, "exp": exp}).Trace("Token times")
+			aud := s.Config.SchemeJump + "://" + path.Join(s.Config.HostJump, s.Config.BasepathJump)
+			bid := "status-server"
+			connectionType := "connect"
+			scopes := []string{"stats"}
+			topic := "stats"
+			token, err := token.New(iat, nbf, exp, scopes, aud, bid, connectionType, s.Config.SecretJump, topic)
+			log.Tracef("token: [%s]", token)
+			if err != nil {
+				log.WithField("error", err.Error()).Error("Jump stats token generation failed")
+				time.Sleep(5 * time.Second) //rate-limit retries if there is a long standing issue
+				break
+			}
+			ctxStats, cancel := context.WithTimeout(ctx, s.Config.ReconnectJumpEvery)
+			to := aud + "/api/v1/" + connectionType + "/" + topic
+			log.Tracef("to: [%s]", to)
+			j.Connect(ctxStats, to, token)
+			cancel() // call to save leaking, even though cancelled before getting to here
+<snip>
+
+```
+
+It can be mocked in testing by eliminating the call to connect to, and just passing populated `[]Report{}` to the `Status` channel. 
+
+```
+s := New()
+
+go func() {
+	s.Status <- []Report{Report{Topic: "test00"}}
+}()
+
+mockReport := <-s.Status:
+
+```
+
 ### More information
 
 Additonal documentation (in various states of completeness) can be found on the following components here:
