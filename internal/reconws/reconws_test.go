@@ -15,10 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/websocket"
 	"github.com/jpillora/backoff"
-	"github.com/practable/jump/internal/permission"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -30,26 +28,6 @@ func init() {
 
 	log.SetLevel(log.WarnLevel)
 
-}
-
-func makeTestToken(audience, secret string, ttl int64) (string, error) {
-
-	var claims permission.Token
-
-	start := jwt.NewNumericDate(time.Now().Add(-time.Second))
-	afterTTL := jwt.NewNumericDate(time.Now().Add(time.Duration(ttl) * time.Second))
-	claims.IssuedAt = start
-	claims.NotBefore = start
-	claims.ExpiresAt = afterTTL
-	claims.Audience = jwt.ClaimStrings{audience}
-	claims.Topic = "123"
-	claims.ConnectionType = "session"
-	claims.Scopes = []string{"read", "write"}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Sign and get the complete encoded token as a string using the secret
-	return token.SignedString([]byte(secret))
 }
 
 func TestBackoff(t *testing.T) {
