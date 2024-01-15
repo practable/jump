@@ -137,6 +137,8 @@ func TestReconnectAuth(t *testing.T) {
 
 		URL, err := url.Parse(relay.URL)
 
+		assert.NoError(t,err)
+
 		URL.Scheme = "ws"
 		URL.Path = path
 

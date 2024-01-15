@@ -671,8 +671,6 @@ func serveWS(ctx context.Context, config Config, w http.ResponseWriter, r *http.
 
 	}
 
-	return
-
 }
 
 // StatsClient starts a routine which sends stats reports on demand.
