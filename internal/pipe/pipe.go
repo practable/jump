@@ -205,11 +205,34 @@ func (p *Pipe) RunChannel(ctx context.Context) {
 	left := chanio.New(ctx, a, b, "left")
 	right := chanio.New(ctx, b, a, "right")
 
-	go func() { io.Copy(target, left) }()
-	go func() { io.Copy(left, target) }()
+	go func() {
+		n, err := io.Copy(target, left)
+		if err != nil {
+			log.Errorf("internal/pipe.Copy(target, left) error after %d bytes was %s", n, err)
+		}
+	}()
+	
+	go func() {
+		n, err := io.Copy(left, target)
+		if err != nil {
+			log.Errorf("internal/pipe.Copy(left,target) error after %d bytes was %s", n, err)
+		}
+		
+	}()
 
-	go func() { io.Copy(client, right) }()
-	go func() { io.Copy(right, client) }()
+	go func() {
+		n, err := io.Copy(client, right)
+		if err != nil {
+			log.Errorf("internal/pipe.Copy(client,right) error after %d bytes was %s", n, err)
+		}
+	}()
+	
+	go func() {
+		n, err := io.Copy(right, client)
+		if err != nil {
+			log.Errorf("internal/pipe.Copy(right,client) error after %d bytes was %s", n, err)
+		}
+	}()
 
 	<-ctx.Done()
 
@@ -243,8 +266,20 @@ func (p *Pipe) RunCopy(ctx context.Context) {
 	defer target.Close()
 	fmt.Printf("connection to server %v established!\n", target.RemoteAddr())
 
-	go func() { io.Copy(target, client) }()
-	go func() { io.Copy(client, target) }()
+	go func() {
+		n, err := io.Copy(target, client)
+		if err != nil {
+			log.Errorf("internal/pipe.Copy(target,client) error after %d bytes was %s", n, err)
+		}
+	}()
+	
+	go func() {
+		n, err := io.Copy(client, target)
+				if err != nil {
+			log.Errorf("internal/pipe.Copy(client,target) error after %d bytes was %s", n, err)
+		}
+
+	}()
 
 	<-ctx.Done()
 

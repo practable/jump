@@ -39,8 +39,16 @@ func TestIOCopy(t *testing.T) {
 	left := New(ctx, a, b, "left")
 	right := New(ctx, c, d, "right")
 
-	go func() { io.Copy(left, right) }()
-	go func() { io.Copy(right, left) }()
+	go func() {
+		_, err := io.Copy(left, right)
+		assert.NoError(t,err)
+	}()
+	
+	go func() {
+		_, err := io.Copy(right, left)
+		assert.NoError(t,err)
+		
+	}()
 
 	h := []byte(`hello`)
 
