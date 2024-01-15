@@ -123,7 +123,7 @@ func PipeBinaryIgnoreText(ctx context.Context, wconn *websocket.Conn, send, rece
 					switch t {
 					case websocket.BinaryMessage:
 						// TODO what does this conversion achieve?
-						receive <- []byte(b.String())
+						receive <- b.Bytes()
 					case websocket.TextMessage: //non-SSH message (none implemented as yet anyway)
 						log.WithField("msg", b.String()).Info("Ignoring TEXT")
 
