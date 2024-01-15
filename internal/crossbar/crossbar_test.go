@@ -433,16 +433,6 @@ func TestSlashify(t *testing.T) {
 
 }
 
-func suppressLog() {
-	var ignore bytes.Buffer
-	logignore := bufio.NewWriter(&ignore)
-	log.SetOutput(logignore)
-}
-
-func displayLog() {
-	log.SetOutput(os.Stdout)
-}
-
 func TestGetConnectionTypeFromPath(t *testing.T) {
 
 	assert.Equal(t, "connectionType", getConnectionTypeFromPath("/connectionType/shellID"))
