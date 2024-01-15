@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/phayes/freeport"
 	"github.com/practable/jump/internal/permission"
@@ -726,31 +725,6 @@ func testPacketBoundariesAsynchronous(t *testing.T) {
 	<-received //wait for receive to finish
 
 	cancel()
-}
-
-func randomClient() clientDetails {
-	return clientDetails{uuid.New().String(), uuid.New().String(), make(chan message)}
-}
-
-func randomClientForTopic(topic string) clientDetails {
-	return clientDetails{uuid.New().String(), topic, make(chan message)}
-}
-
-func clientExists(topics *topicDirectory, client clientDetails) bool {
-
-	topics.Lock()
-	existingClients := topics.directory[client.topic]
-	topics.Unlock()
-
-	for _, existingClient := range existingClients {
-		if client.name == existingClient.name {
-			return true
-
-		}
-	}
-
-	return false
-
 }
 
 func TestSlashify(t *testing.T) {

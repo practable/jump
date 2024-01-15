@@ -87,12 +87,6 @@ type Client struct {
 	clearToSend chan struct{}
 }
 
-type clientDetails struct {
-	name         string
-	topic        string
-	messagesChan chan message
-}
-
 //Config represents the configuration of a shellbar
 type Config struct {
 
@@ -198,10 +192,6 @@ type message struct {
 	data   []byte //text data are converted to/from bytes as needed
 }
 
-type topicDirectory struct {
-	sync.Mutex
-	directory map[string][]clientDetails
-}
 
 // When transferring files, messages are typically at max size
 // So we can save some syscalls if we can fit them into the buffer
